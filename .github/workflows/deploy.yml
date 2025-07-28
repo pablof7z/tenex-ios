@@ -1,0 +1,95 @@
+name: Deploy to TestFlight
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: macos-14
+    
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        submodules: recursive
+    
+    - name: Select Xcode
+      run: sudo xcode-select -s /Applications/Xcode_15.4.app
+    
+    - name: Install dependencies
+      run: |
+        brew install xcodegen
+        brew install xcbeautify
+    
+    - name: Generate Xcode project
+      run: |
+        cd TENEX
+        xcodegen generate
+    
+    - name: Import certificates
+      env:
+        CERTIFICATES_P12: ${{ secrets.CERTIFICATES_P12 }}
+        CERTIFICATES_PASSWORD: ${{ secrets.CERTIFICATES_PASSWORD }}
+        KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
+      run: |
+        # Create variables
+        CERTIFICATE_PATH=$RUNNER_TEMP/build_certificate.p12
+        KEYCHAIN_PATH=$RUNNER_TEMP/app-signing.keychain-db
+        
+        # Import certificate from secrets
+        echo -n "$CERTIFICATES_P12" | base64 --decode --output $CERTIFICATE_PATH
+        
+        # Create temporary keychain
+        security create-keychain -p "$KEYCHAIN_PASSWORD" $KEYCHAIN_PATH
+        security set-keychain-settings -lut 21600 $KEYCHAIN_PATH
+        security unlock-keychain -p "$KEYCHAIN_PASSWORD" $KEYCHAIN_PATH
+        
+        # Import certificate to keychain
+        security import $CERTIFICATE_PATH -P "$CERTIFICATES_PASSWORD" -A -t cert -f pkcs12 -k $KEYCHAIN_PATH
+        security list-keychain -d user -s $KEYCHAIN_PATH
+    
+    - name: Install provisioning profile
+      env:
+        PROVISIONING_PROFILE: ${{ secrets.PROVISIONING_PROFILE }}
+      run: |
+        PP_PATH=$RUNNER_TEMP/build_pp.mobileprovision
+        echo -n "$PROVISIONING_PROFILE" | base64 --decode --output $PP_PATH
+        mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
+        cp $PP_PATH ~/Library/MobileDevice/Provisioning\ Profiles
+    
+    - name: Build and archive
+      run: |
+        xcodebuild archive \
+          -project TENEX/TENEX.xcodeproj \
+          -scheme TENEX \
+          -configuration Release \
+          -archivePath $RUNNER_TEMP/TENEX.xcarchive \
+          -destination "generic/platform=iOS" \
+          | xcbeautify
+    
+    - name: Export archive
+      run: |
+        xcodebuild -exportArchive \
+          -archivePath $RUNNER_TEMP/TENEX.xcarchive \
+          -exportPath $RUNNER_TEMP/export \
+          -exportOptionsPlist ExportOptions-TestFlight.plist \
+          | xcbeautify
+    
+    - name: Upload to TestFlight
+      env:
+        APP_STORE_API_KEY: ${{ secrets.APP_STORE_API_KEY }}
+        APP_STORE_API_ISSUER: ${{ secrets.APP_STORE_API_ISSUER }}
+      run: |
+        xcrun altool --upload-app \
+          -f $RUNNER_TEMP/export/TENEX.ipa \
+          -t ios \
+          --apiKey "$APP_STORE_API_KEY" \
+          --apiIssuer "$APP_STORE_API_ISSUER"
+    
+    - name: Clean up keychain
+      if: ${{ always() }}
+      run: |
+        security delete-keychain $RUNNER_TEMP/app-signing.keychain-db
+        rm -f ~/Library/MobileDevice/Provisioning\ Profiles/build_pp.mobileprovision
