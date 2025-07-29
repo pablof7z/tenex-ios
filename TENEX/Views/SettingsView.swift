@@ -8,115 +8,18 @@ struct SettingsView: View {
     @State private var showingLogoutAlert = false
     @State private var showingWipeDataAlert = false
     @State private var isWipingData = false
+    @State private var currentUserNpub: String?
+    @State private var relayCount = 0
     
     var body: some View {
         NavigationStack {
             Form {
-                Section("Account") {
-                    if let user = nostrManager.currentUser {
-                        HStack {
-                            VStack(alignment: .leading) {
-                                Text("Public Key")
-                                    .font(.caption)
-                                    .foregroundColor(.gray)
-                                Text(user.npub.prefix(16) + "...")
-                                    .font(.system(.body, design: .monospaced))
-                            }
-                            
-                            Spacer()
-                            
-                            Button(action: {
-                                UIPasteboard.general.string = user.npub
-                            }) {
-                                Image(systemName: "doc.on.doc")
-                                    .foregroundColor(.blue)
-                            }
-                        }
-                    }
-                    
-                    Button("Logout") {
-                        showingLogoutAlert = true
-                    }
-                    .foregroundColor(.red)
-                }
-                
-                Section("API Keys") {
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("OpenRouter API Key")
-                            .font(.caption)
-                            .foregroundColor(.gray)
-                        SecureField("Enter your API key", text: $openRouterAPIKey)
-                            .textFieldStyle(.roundedBorder)
-                    }
-                    
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("OpenAI API Key")
-                            .font(.caption)
-                            .foregroundColor(.gray)
-                        SecureField("Enter your API key", text: $openAIAPIKey)
-                            .textFieldStyle(.roundedBorder)
-                    }
-                }
-                .listRowSeparator(.hidden)
-                
-                Section {
-                    Link(destination: URL(string: "https://openrouter.ai/keys")!) {
-                        HStack {
-                            Text("Get OpenRouter API Key")
-                            Spacer()
-                            Image(systemName: "arrow.up.right.square")
-                                .foregroundColor(.gray)
-                        }
-                    }
-                    
-                    Link(destination: URL(string: "https://platform.openai.com/api-keys")!) {
-                        HStack {
-                            Text("Get OpenAI API Key")
-                            Spacer()
-                            Image(systemName: "arrow.up.right.square")
-                                .foregroundColor(.gray)
-                        }
-                    }
-                }
-                
-                Section("Relays") {
-                    NavigationLink(destination: RelayManagementView()) {
-                        HStack {
-                            Label("Manage Relays", systemImage: "network")
-                            Spacer()
-                            Text("\(nostrManager.relayCount)")
-                                .foregroundColor(.gray)
-                        }
-                    }
-                }
-                
-                Section("About") {
-                    HStack {
-                        Text("Version")
-                        Spacer()
-                        Text("1.0.0")
-                            .foregroundColor(.gray)
-                    }
-                }
-                
+                accountSection
+                apiKeysSection
+                relaysSection
+                aboutSection
                 #if DEBUG
-                Section("Debug") {
-                    Button("Wipe Cache Database") {
-                        showingWipeDataAlert = true
-                    }
-                    .foregroundColor(.red)
-                    .disabled(isWipingData)
-                    
-                    if isWipingData {
-                        HStack {
-                            ProgressView()
-                                .scaleEffect(0.8)
-                            Text("Wiping database...")
-                                .foregroundColor(.gray)
-                                .font(.caption)
-                        }
-                    }
-                }
+                debugSection
                 #endif
             }
             .navigationTitle("Settings")
@@ -141,18 +44,129 @@ struct SettingsView: View {
         }
     }
     
+    private var accountSection: some View {
+        Section("Account") {
+            if nostrManager.hasActiveUser {
+                HStack {
+                    VStack(alignment: .leading) {
+                        Text("Public Key")
+                            .font(.caption)
+                            .foregroundColor(.gray)
+                        if let npub = currentUserNpub {
+                            Text(String(npub.prefix(16)) + "...")
+                                .font(.system(.body, design: .monospaced))
+                        } else {
+                            ProgressView()
+                                .scaleEffect(0.8)
+                        }
+                    }
+                    
+                    Spacer()
+                    
+                    Button(action: {
+                        if let npub = currentUserNpub {
+                            UIPasteboard.general.string = npub
+                        }
+                    }) {
+                        Image(systemName: "doc.on.doc")
+                            .foregroundColor(.blue)
+                    }
+                    .disabled(currentUserNpub == nil)
+                }
+                .task {
+                    if let user = await nostrManager.currentUser {
+                        currentUserNpub = user.npub
+                    }
+                }
+            }
+            
+            Button("Logout") {
+                showingLogoutAlert = true
+            }
+            .foregroundColor(.red)
+        }
+    }
+    
+    private var apiKeysSection: some View {
+        Section("API Keys") {
+            VStack(alignment: .leading, spacing: 8) {
+                Text("OpenRouter API Key")
+                    .font(.caption)
+                    .foregroundColor(.gray)
+                SecureField("Enter your API key", text: $openRouterAPIKey)
+                    .textFieldStyle(.roundedBorder)
+            }
+            
+            VStack(alignment: .leading, spacing: 8) {
+                Text("OpenAI API Key")
+                    .font(.caption)
+                    .foregroundColor(.gray)
+                SecureField("Enter your API key", text: $openAIAPIKey)
+                    .textFieldStyle(.roundedBorder)
+            }
+        }
+    }
+    
+    private var relaysSection: some View {
+        Section("Relays") {
+            NavigationLink(destination: RelayManagementView()) {
+                HStack {
+                    Text("Manage Relays")
+                    Spacer()
+                    if relayCount > 0 {
+                        Text("\(relayCount)")
+                            .foregroundColor(.gray)
+                    }
+                }
+            }
+            .task {
+                let relays = await nostrManager.ndk.relays
+                relayCount = relays.count
+            }
+        }
+    }
+    
+    private var aboutSection: some View {
+        Section("About") {
+            HStack {
+                Text("Version")
+                Spacer()
+                Text("1.0.0")
+                    .foregroundColor(.gray)
+            }
+        }
+    }
+    
+    #if DEBUG
+    private var debugSection: some View {
+        Section("Debug") {
+            Button("Wipe Cache Database") {
+                showingWipeDataAlert = true
+            }
+            .foregroundColor(.red)
+            .disabled(isWipingData)
+            
+            if isWipingData {
+                HStack {
+                    ProgressView()
+                        .scaleEffect(0.8)
+                    Text("Wiping database...")
+                        .foregroundColor(.gray)
+                        .font(.caption)
+                }
+            }
+        }
+    }
+    #endif
+    
     @MainActor
     private func wipeDatabase() async {
         isWipingData = true
         defer { isWipingData = false }
         
         do {
-            if let cache = nostrManager.cache {
-                try await cache.clear()
-                print("Successfully wiped cache database")
-            } else {
-                print("No cache instance available to wipe")
-            }
+            try await nostrManager.clearCache()
+            print("Successfully wiped cache database")
         } catch {
             print("Failed to wipe cache database: \(error)")
         }

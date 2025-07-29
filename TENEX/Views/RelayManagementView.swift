@@ -55,23 +55,35 @@ struct RelayManagementView: View {
     }
     
     private func loadRelays() {
-        // Get connected relays from NDK
-        relays = Array(nostrManager.ndk.relayPool.connectedRelays().map { $0.url })
+        Task {
+            // Get all relays from NDK and filter connected ones
+            let allRelays = await nostrManager.ndk.relays
+            var connectedRelayUrls: [String] = []
+            
+            for relay in allRelays {
+                let state = await relay.connectionState
+                if state == .connected {
+                    connectedRelayUrls.append(relay.url)
+                }
+            }
+            
+            await MainActor.run {
+                relays = connectedRelayUrls
+            }
+        }
     }
     
     private func addRelay(_ url: String) {
         Task {
-            await nostrManager.ndk.relayPool.addRelay(url)
+            await nostrManager.ndk.addRelay(url)
             loadRelays()
         }
     }
     
     private func removeRelay(_ url: String) {
         Task {
-            if let relay = nostrManager.ndk.relayPool.relay(url) {
-                await nostrManager.ndk.relayPool.removeRelay(relay)
-                loadRelays()
-            }
+            await nostrManager.ndk.removeRelay(url)
+            loadRelays()
         }
     }
 }

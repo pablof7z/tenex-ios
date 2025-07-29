@@ -9,7 +9,7 @@ struct ContentView: View {
     
     var body: some View {
         Group {
-            if NDKAuthManager.shared.hasActiveSession {
+            if nostrManager.isAuthenticated {
                 // Authenticated content
                 MainTabView()
             } else {
@@ -61,8 +61,8 @@ struct ContentView: View {
             .padding(.top, 50)
             }
         }
-        .onChange(of: NDKAuthManager.shared.hasActiveSession) { _, hasActiveSession in
-            if hasActiveSession {
+        .onChange(of: nostrManager.isAuthenticated) { _, isAuthenticated in
+            if isAuthenticated {
                 // Authentication state will be handled by NostrManager's observation
                 print("User authenticated")
             }
@@ -77,14 +77,8 @@ struct ContentView: View {
         
         Task {
             do {
-                // Create a signer with the private key
-                let signer = try NDKPrivateKeySigner(nsec: privateKey)
-                
-                // Create session through auth manager
-                _ = try await NDKAuthManager.shared.addSession(
-                    signer,
-                    requiresBiometric: false
-                )
+                // Login through nostrManager
+                try await nostrManager.login(with: privateKey)
                 
                 // The NostrManager will automatically handle the session via auth state observation
                 

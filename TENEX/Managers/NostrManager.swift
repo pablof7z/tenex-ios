@@ -5,7 +5,8 @@ import Observation
 
 @MainActor
 @Observable
-class NostrManager: NDKNostrManager {
+class NostrManager {
+    
     // MARK: - TENEX-specific Properties
     
     // Project status tracking
@@ -20,46 +21,187 @@ class NostrManager: NDKNostrManager {
     // Conversation tracking
     var projectConversations: [String: [NDKConversation]] = [:] // projectId -> conversations
     
-    // MARK: - Configuration Overrides
+    // Auth manager
+    private(set) var authManager: NDKAuthManager?
     
-    override var defaultRelays: [String] {
+    // Current user
+    var currentUser: NDKUser? {
+        guard let pubkey = authManager?.activeSession?.pubkey else { return nil }
+        return NDKUser(pubkey: pubkey)
+    }
+    
+    // Current user's pubkey (synchronous access)
+    var currentUserPubkey: String?
+    
+    // Authentication status
+    var hasActiveUser: Bool {
+        isAuthenticated
+    }
+    
+    // MARK: - Core Properties
+    
+    private(set) var isConnected = false
+    private(set) var isInitialized = false
+    private var _ndk: NDK?
+    
+    var ndk: NDK {
+        guard let ndk = _ndk else {
+            fatalError("NDK accessed before initialization. Check isInitialized before accessing ndk.")
+        }
+        return ndk
+    }
+    
+    var cache: NDKSQLiteCache?
+    var zapManager: NDKZapManager?
+    
+    // MARK: - Configuration
+    
+    var defaultRelays: [String] {
         [
-            "wss://relay.primal.net",
-            "wss://relay.damus.io",
-            "wss://relay.nostr.band",
-            "wss://nos.lol",
-            "wss://relay.snort.social"
+            "wss://relay.primal.net"
         ]
     }
     
-    override var appRelaysKey: String {
-        "TENEXAppAddedRelays"
-    }
-    
-    override var clientTagConfig: NDKClientTagConfig? {
+    var clientTagConfig: NDKClientTagConfig? {
         NDKClientTagConfig(
             name: "TENEX",
             autoTag: true
         )
     }
     
-    override var sessionConfiguration: NDKSessionConfiguration {
+    var appRelaysKey: String {
+        "TENEXAddedRelays"
+    }
+    
+    var sessionConfiguration: NDKSessionConfiguration {
         NDKSessionConfiguration(
-            dataRequirements: [.followList],
+            dataRequirements: [.followList, .muteList],
             preloadStrategy: .progressive
         )
     }
     
-    // MARK: - Initialization
+    // MARK: - Computed Properties
     
-    override init() {
-        super.init()
+    var isAuthenticated: Bool {
+        authManager?.isAuthenticated ?? false
     }
     
-    deinit {
-        Task { @MainActor in
-            statusMonitoringTask?.cancel()
+    // MARK: - Initialization
+    
+    init() {
+        NDKLogger.log(.info, category: .general, "[NostrManager] Initializing...")
+        Task {
+            await setupNDK()
         }
+    }
+    
+    func cleanup() {
+        statusMonitoringTask?.cancel()
+    }
+    
+    // MARK: - Cache Management
+    
+    func clearCache() async throws {
+        guard let cache = cache else {
+            throw NDKError.notConfigured("No cache available")
+        }
+        try await cache.clear()
+    }
+    
+    // MARK: - Setup
+    
+    func setupNDK() async {
+        NDKLogger.log(.info, category: .general, "[NostrManager] Setting up NDK...")
+        
+        // Initialize SQLite cache for better performance and offline access
+        do {
+            cache = try await NDKSQLiteCache()
+            let allRelays = getAllRelays()
+            _ndk = NDK(relayUrls: allRelays, cache: cache)
+            NDKLogger.log(.info, category: .general, "NDK initialized with SQLite cache and \(allRelays.count) relays: \(allRelays)")
+        } catch {
+            NDKLogger.log(.error, category: .general, "Failed to initialize SQLite cache: \(error). Continuing without cache.")
+            let allRelays = getAllRelays()
+            _ndk = NDK(relayUrls: allRelays)
+            NDKLogger.log(.info, category: .general, "NDK initialized without cache and \(allRelays.count) relays: \(allRelays)")
+        }
+        
+        // Configure client tags if provided
+        if let config = clientTagConfig {
+            ndk.clientTagConfig = config
+            NDKLogger.log(.info, category: .general, "[NostrManager] Configured NIP-89 client tags")
+        }
+        
+        // Initialize zap manager
+        zapManager = NDKZapManager(ndk: ndk)
+        NDKLogger.log(.info, category: .general, "[NostrManager] Zap manager initialized")
+        
+        // Initialize auth manager to restore sessions
+        NDKLogger.log(.info, category: .general, "[NostrManager] Initializing auth manager for session restoration")
+        authManager = NDKAuthManager(ndk: ndk)
+        await authManager?.initialize()
+        
+        Task {
+            await connectToRelays()
+        }
+        
+        // Mark as initialized
+        isInitialized = true
+        NDKLogger.log(.info, category: .general, "[NostrManager] Initialization complete")
+    }
+    
+    func connectToRelays() async {
+        NDKLogger.log(.info, category: .general, "[NostrManager] Connecting to relays...")
+        await ndk.connect()
+        isConnected = true
+        NDKLogger.log(.info, category: .general, "[NostrManager] Connected to relays")
+    }
+    
+    func getAllRelays() -> [String] {
+        let appRelays = UserDefaults.standard.stringArray(forKey: appRelaysKey) ?? []
+        return Array(Set(defaultRelays + appRelays))
+    }
+    
+    var appAddedRelays: [String] {
+        UserDefaults.standard.stringArray(forKey: appRelaysKey) ?? []
+    }
+    
+    func addAppRelay(_ relayURL: String) async {
+        var appRelays = appAddedRelays
+        if !appRelays.contains(relayURL) && !defaultRelays.contains(relayURL) {
+            appRelays.append(relayURL)
+            UserDefaults.standard.set(appRelays, forKey: appRelaysKey)
+            
+            // Add to NDK and connect
+            let relay = await ndk.addRelayAndConnect(relayURL)
+            if relay != nil {
+                NDKLogger.log(.info, category: .general, "Added and connected to relay: \(relayURL)")
+            }
+        }
+    }
+    
+    func removeAppRelay(_ relayURL: String) async {
+        var appRelays = appAddedRelays
+        appRelays.removeAll { $0 == relayURL }
+        UserDefaults.standard.set(appRelays, forKey: appRelaysKey)
+        
+        // Don't remove if it's a default relay
+        if !defaultRelays.contains(relayURL) {
+            await ndk.removeRelay(relayURL)
+            NDKLogger.log(.info, category: .general, "Removed relay: \(relayURL)")
+        }
+    }
+    
+    // MARK: - User Data Management
+    
+    func initializeUserData(for pubkey: String) async {
+        // Initialize user-specific data
+        
+        currentUserPubkey = pubkey
+        
+        // Start monitoring for this user
+        let user = NDKUser(pubkey: pubkey)
+        await startStatusMonitoring(for: user)
     }
     
     // MARK: - Project Status Monitoring
@@ -74,8 +216,21 @@ class NostrManager: NDKNostrManager {
         }
         
         statusMonitoringTask = Task {
-            // Stream projects as they arrive - never wait!
-            for await project in user.streamProjects(maxAge: 300) {
+            // Stream projects for this user
+            let projectFilter = NDKFilter(
+                authors: [user.pubkey],
+                kinds: [TENEXEventKind.project]
+            )
+            
+            let projectSource = ndk.observe(
+                filter: projectFilter,
+                maxAge: 300,
+                cachePolicy: .cacheWithNetwork
+            )
+            
+            for await event in projectSource.events {
+                let project = NDKProject(event: event)
+                
                 await MainActor.run {
                     // Update or add project
                     if let index = self.userProjects.firstIndex(where: { $0.addressableId == project.addressableId }) {
@@ -94,7 +249,6 @@ class NostrManager: NDKNostrManager {
     }
     
     private func monitorProjectStatuses() async {
-        guard let ndk = ndk else { return }
         
         // Create filters for project status events
         for project in userProjects {
@@ -103,7 +257,6 @@ class NostrManager: NDKNostrManager {
     }
     
     private func monitorProjectStatus(for project: NDKProject) async {
-        guard let ndk = ndk else { return }
         
         let statusFilter = NDKFilter(
             kinds: [TENEXEventKind.projectStatus],
@@ -138,7 +291,6 @@ class NostrManager: NDKNostrManager {
     // MARK: - Conversation Management
     
     func fetchConversations(for pubkey: String) async throws -> [NDKConversation] {
-        guard let ndk = ndk else { throw NDKError.notConfigured("NDK not initialized") }
         
         let filter = NDKFilter(
             authors: [pubkey],
@@ -166,7 +318,6 @@ class NostrManager: NDKNostrManager {
     // MARK: - Task Management
     
     func fetchTasks(for projectId: String) async throws -> [NDKTask] {
-        guard let ndk = ndk else { throw NDKError.notConfigured("NDK not initialized") }
         
         let filter = NDKFilter(
             kinds: [TENEXEventKind.task],
@@ -237,10 +388,31 @@ class NostrManager: NDKNostrManager {
         projectConversations[projectId] ?? []
     }
     
+    // MARK: - Project Control
+    
+    func requestProjectStart(project: NDKProject) async {
+        guard let signer = ndk.signer else { return }
+        
+        do {
+            // Create ephemeral project start request event
+            let event = try await NDKEventBuilder(ndk: ndk)
+                .content("start")
+                .kind(TENEXEventKind.projectControl)
+                .tag(["a", project.addressableId])
+                .tag(["action", "start"])
+                .build(signer: signer)
+            
+            // Publish as ephemeral event
+            let publishedRelays = try await ndk.publish(event)
+            print("🚀 Sent project start request to \(publishedRelays.count) relays")
+        } catch {
+            print("❌ Failed to send project start request: \(error)")
+        }
+    }
+    
     // MARK: - LLM Config Monitoring
     
     func monitorLLMConfigs() async {
-        guard let ndk = ndk else { return }
         
         // Monitor LLM config changes for all projects
         let configFilter = NDKFilter(
@@ -271,8 +443,8 @@ class NostrManager: NDKNostrManager {
         content: String,
         mentionedAgentPubkeys: [String] = []
     ) async throws -> NDKConversation {
-        guard let ndk = ndk, let signer = ndk.signer else {
-            throw NDKError.notConfigured("NDK not initialized or no signer available")
+        guard let signer = ndk.signer else {
+            throw NDKError.notConfigured("No signer available")
         }
         
         var builder = NDKEventBuilder(ndk: ndk)
@@ -294,6 +466,98 @@ class NostrManager: NDKNostrManager {
         print("Created conversation on \(publishedRelays.count) relays")
         
         return NDKConversation(event: event)
+    }
+    
+    // MARK: - Conversation Reply
+    
+    func replyToConversation(
+        _ conversation: NDKConversation,
+        content: String,
+        mentionedAgentPubkeys: [String] = [],
+        lastVisibleMessage: NDKEvent? = nil
+    ) async throws -> NDKEvent {
+        guard let signer = ndk.signer else {
+            throw NDKError.notConfigured("No signer available")
+        }
+        
+        var builder = NDKEventBuilder(ndk: ndk)
+            .content(content)
+            .kind(TENEXEventKind.threadReply)
+            .tag(["e", conversation.id, "", "root"])
+            .tag(["a", conversation.projectId])
+        
+        // Add reply tag to the last visible message if provided
+        if let lastMessage = lastVisibleMessage {
+            builder = builder.tag(["e", lastMessage.id, "", "reply"])
+        }
+        
+        // Add pubkey mentions
+        for agentPubkey in mentionedAgentPubkeys {
+            builder = builder.tag(["p", agentPubkey])
+        }
+        
+        let event = try await builder.build(signer: signer)
+        let publishedRelays = try await ndk.publish(event)
+        
+        print("Created reply on \(publishedRelays.count) relays")
+        
+        return event
+    }
+    
+    // MARK: - User Management
+    
+    @MainActor
+    private func updateCurrentUserPubkey() {
+        if let user = currentUser {
+            currentUserPubkey = user.pubkey
+        } else {
+            currentUserPubkey = nil
+        }
+    }
+    
+    // MARK: - Authentication
+    
+    func login(with privateKey: String) async throws {
+        guard isInitialized else {
+            throw NDKError.notConfigured("NDK not initialized")
+        }
+        
+        // Create signer
+        let signer: NDKPrivateKeySigner
+        if privateKey.hasPrefix("nsec1") {
+            signer = try NDKPrivateKeySigner(nsec: privateKey)
+        } else {
+            signer = try NDKPrivateKeySigner(privateKey: privateKey)
+        }
+        
+        // Add session using auth manager
+        guard let authManager = authManager else {
+            throw NDKError.notConfigured("Auth manager not initialized")
+        }
+        _ = try await authManager.addSession(signer)
+        
+        // Get the pubkey from the active session
+        if let pubkey = authManager.activePubkey {
+            await initializeUserData(for: pubkey)
+        }
+    }
+    
+    func logout() {
+        guard isInitialized else { return }
+        
+        // Stop monitoring
+        stopStatusMonitoring()
+        
+        // Clear current user data
+        currentUserPubkey = nil
+        userProjects = []
+        projectStatuses = [:]
+        onlineProjects = []
+        projectLLMConfigs = [:]
+        projectConversations = [:]
+        
+        // Logout from auth manager
+        authManager?.logout()
     }
 }
 

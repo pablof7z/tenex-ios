@@ -27,7 +27,7 @@ struct ProjectListView: View {
     var body: some View {
         NavigationStack {
             Group {
-                if filteredAndSortedProjects.isEmpty && nostrManager.isAuthenticated {
+                if filteredAndSortedProjects.isEmpty && nostrManager.hasActiveUser {
                     ContentUnavailableView(
                         "No Projects",
                         systemImage: "folder",

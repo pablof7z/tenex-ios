@@ -18,8 +18,7 @@ struct MainTabView: View {
         }
         .task {
             // Start monitoring projects and status when the main view loads
-            if let pubkey = NDKAuthManager.shared.activePubkey {
-                let user = NDKUser(pubkey: pubkey)
+            if let user = await nostrManager.currentUser {
                 await nostrManager.startStatusMonitoring(for: user)
             }
         }

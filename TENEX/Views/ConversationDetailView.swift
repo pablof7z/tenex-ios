@@ -37,7 +37,7 @@ struct ConversationDetailView: View {
                             content: conversation.content,
                             author: conversation.author,
                             timestamp: conversation.createdAt,
-                            isFromCurrentUser: conversation.author == nostrManager.currentUser?.pubkey,
+                            isFromCurrentUser: conversation.author == nostrManager.currentUserPubkey,
                             availableAgents: availableAgents,
                             messageId: conversation.id,
                             onTTSPressed: {
@@ -68,7 +68,7 @@ struct ConversationDetailView: View {
                                 // Render voice message
                                 VoiceMessageView(
                                     audioEvent: event,
-                                    isFromCurrentUser: event.pubkey == nostrManager.currentUser?.pubkey,
+                                    isFromCurrentUser: event.pubkey == nostrManager.currentUserPubkey,
                                     availableAgents: availableAgents
                                 )
                                 .environmentObject(audioManager)
@@ -79,7 +79,7 @@ struct ConversationDetailView: View {
                                     content: event.content,
                                     author: event.pubkey,
                                     timestamp: Date(timeIntervalSince1970: TimeInterval(event.createdAt)),
-                                    isFromCurrentUser: event.pubkey == nostrManager.currentUser?.pubkey,
+                                    isFromCurrentUser: event.pubkey == nostrManager.currentUserPubkey,
                                     mentionedAgents: event.tags
                                         .filter { $0.first == "p" }
                                         .compactMap { $0.count > 1 ? String($0[1]) : nil },
@@ -773,7 +773,7 @@ struct TaskDetailView: View {
             statusUpdates.insert(event, at: insertIndex)
             
             // Track most recent non-user update
-            if event.pubkey != nostrManager.currentUser?.pubkey {
+            if event.pubkey != nostrManager.currentUserPubkey {
                 mostRecentNonUserUpdate = event
             }
             

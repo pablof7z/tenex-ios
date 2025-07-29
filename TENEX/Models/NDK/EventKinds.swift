@@ -26,6 +26,7 @@ struct TENEXEventKind {
     static let typingIndicator: Kind = 24111
     static let typingIndicatorStop: Kind = 24112
     static let taskAbort: Kind = 24133
+    static let projectControl: Kind = 24001 // Ephemeral event for project start/stop requests
     
     // Addressable Events
     static let article: Kind = 30023

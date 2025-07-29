@@ -280,11 +280,18 @@ class AudioManager: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, AVA
         // Pause the audio recorder
         audioRecorder?.pause()
         
+        // Remove the tap before pausing to avoid conflicts
+        audioEngine.inputNode.removeTap(onBus: 0)
+        
         // Pause the audio engine
         audioEngine.pause()
         
-        // Pause speech recognition
+        // End speech recognition audio
         recognitionRequest?.endAudio()
+        
+        // Cancel the recognition task
+        recognitionTask?.cancel()
+        recognitionTask = nil
     }
     
     func resumeRecording() {
@@ -296,19 +303,35 @@ class AudioManager: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, AVA
             try audioEngine.start()
         } catch {
             print("Failed to resume audio engine: \(error)")
+            return
         }
         
-        // Resume speech recognition by creating a new request
-        if audioEngine.isRunning {
-            recognitionRequest = SFSpeechAudioBufferRecognitionRequest()
-            recognitionRequest?.shouldReportPartialResults = true
+        // Create a new speech recognition request
+        recognitionRequest = SFSpeechAudioBufferRecognitionRequest()
+        recognitionRequest?.shouldReportPartialResults = true
+        
+        // Re-install tap on audio input node
+        let inputNode = audioEngine.inputNode
+        let recordingFormat = inputNode.outputFormat(forBus: 0)
+        
+        inputNode.installTap(onBus: 0, bufferSize: 1024, format: recordingFormat) { [weak self] buffer, _ in
+            self?.recognitionRequest?.append(buffer)
+        }
+        
+        // Start a new recognition task
+        recognitionTask = speechRecognizer?.recognitionTask(with: recognitionRequest!) { [weak self] result, error in
+            guard let self = self else { return }
             
-            // Re-install tap on audio input node
-            let inputNode = audioEngine.inputNode
-            let recordingFormat = inputNode.outputFormat(forBus: 0)
+            if let error = error {
+                print("Speech recognition error: \(error)")
+            }
             
-            inputNode.installTap(onBus: 0, bufferSize: 1024, format: recordingFormat) { buffer, _ in
-                self.recognitionRequest?.append(buffer)
+            if let result = result {
+                // Update the transcribed text with the new results
+                DispatchQueue.main.async {
+                    // We need to append to existing transcription or handle it appropriately
+                    // This depends on how the transcription callback is set up
+                }
             }
         }
     }
