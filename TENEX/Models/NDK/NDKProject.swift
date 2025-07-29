@@ -53,6 +53,11 @@ class NDKProject: Identifiable {
         "\(Self.kind):\(pubkey):\(identifier)"
     }
     
+    // Convenience property for a-tag reference
+    var aTag: String {
+        addressableId
+    }
+    
     // Update project from newer event
     func update(from event: NDKEvent) {
         // Update title

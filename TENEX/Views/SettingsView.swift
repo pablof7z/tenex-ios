@@ -84,7 +84,7 @@ struct SettingsView: View {
                         HStack {
                             Label("Manage Relays", systemImage: "network")
                             Spacer()
-                            Text("\(RelayManager.shared.relays.count)")
+                            Text("\(nostrManager.relayCount)")
                                 .foregroundColor(.gray)
                         }
                     }
