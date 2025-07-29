@@ -38,6 +38,12 @@ class AudioManager: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, AVA
     // Audio session management
     private var currentAudioSessionCategory: AVAudioSession.Category = .playback
     
+    // Voice activity detection
+    private var silenceThreshold: Float = 0.02
+    private var silenceDuration: TimeInterval = 0
+    private var lastSignificantAmplitude: TimeInterval = 0
+    private let maxSilenceDuration: TimeInterval = 3.0 // Auto-pause after 3 seconds of silence
+    
     // Voice options for different agents
     static let voiceOptions: [(identifier: String, name: String)] = [
         ("com.apple.voice.enhanced.en-US.Ava", "Ava"),
@@ -691,7 +697,16 @@ class AudioManager: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, AVA
         
         do {
             if category == .playAndRecord {
-                try audioSession.setCategory(.playAndRecord, mode: .default, options: [.defaultToSpeaker, .allowBluetooth])
+                // Enhanced configuration for better recording quality
+                try audioSession.setCategory(.playAndRecord, mode: .measurement, options: [.defaultToSpeaker, .allowBluetooth, .interruptSpokenAudioAndMixWithOthers])
+                
+                // Set preferred sample rate for better quality
+                try audioSession.setPreferredSampleRate(44100)
+                
+                // Enable voice processing for noise reduction
+                if #available(iOS 15.0, *) {
+                    try audioSession.setAllowHapticsAndSystemSoundsDuringRecording(false)
+                }
             } else {
                 try audioSession.setCategory(.playback, mode: .default, options: [.allowBluetooth])
             }

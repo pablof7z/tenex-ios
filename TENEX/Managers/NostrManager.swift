@@ -89,7 +89,6 @@ class NostrManager {
     // MARK: - Initialization
     
     init() {
-        NDKLogger.log(.info, category: .general, "[NostrManager] Initializing...")
         Task {
             await setupNDK()
         }
@@ -111,21 +110,29 @@ class NostrManager {
     // MARK: - Setup
     
     func setupNDK() async {
-        NDKLogger.log(.info, category: .general, "[NostrManager] Setting up NDK...")
+        NDKLogger.configure(
+            logLevel: .debug,
+            enabledCategories: [
+                .general,
+                .subscription,
+                .cache
+            ],
+            logNetworkTraffic: true
+        )
         
         // Initialize SQLite cache for better performance and offline access
         do {
             cache = try await NDKSQLiteCache()
             let allRelays = getAllRelays()
             _ndk = NDK(relayUrls: allRelays, cache: cache)
-            NDKLogger.log(.info, category: .general, "NDK initialized with SQLite cache and \(allRelays.count) relays: \(allRelays)")
+            NDKLogger.log(.info, category: .general, "NDK initialized with SQLite cache and \(allRelays.count) relays: \(allRelays) (outbox disabled)")
         } catch {
             NDKLogger.log(.error, category: .general, "Failed to initialize SQLite cache: \(error). Continuing without cache.")
             let allRelays = getAllRelays()
             _ndk = NDK(relayUrls: allRelays)
-            NDKLogger.log(.info, category: .general, "NDK initialized without cache and \(allRelays.count) relays: \(allRelays)")
+            NDKLogger.log(.info, category: .general, "NDK initialized without cache and \(allRelays.count) relays: \(allRelays) (outbox disabled)")
         }
-        
+
         // Configure client tags if provided
         if let config = clientTagConfig {
             ndk.clientTagConfig = config
@@ -224,7 +231,7 @@ class NostrManager {
             
             let projectSource = ndk.observe(
                 filter: projectFilter,
-                maxAge: 300,
+                maxAge: 0,
                 cachePolicy: .cacheWithNetwork
             )
             
@@ -266,18 +273,25 @@ class NostrManager {
         // Stream status events as they arrive
         let dataSource = ndk.observe(
             filter: statusFilter,
-            maxAge: 0, // Always get fresh status updates
-            cachePolicy: .cacheWithNetwork
+            cachePolicy: .networkOnly
         )
         
         // Process events as they stream in
         for await event in dataSource.events {
+            print("📡 monitorProjectStatus - Received status event for project: \(project.id)")
+            print("📡 monitorProjectStatus - Event ID: \(event.id)")
+            print("📡 monitorProjectStatus - Event content: \(event.content)")
+            
             let status = NDKProjectStatus(event: event)
+            print("📡 monitorProjectStatus - Parsed status projectId: \(status.projectId)")
+            print("📡 monitorProjectStatus - Parsed agents count: \(status.availableAgents.count)")
+            
             if !status.projectId.isEmpty {
                 await MainActor.run {
-                    projectStatuses[project.id] = status
+                    print("📡 monitorProjectStatus - Storing status for project.addressableId: \(project.addressableId)")
+                    projectStatuses[project.addressableId] = status
                     // For now, consider all projects with status as online
-                    onlineProjects.insert(project.id)
+                    onlineProjects.insert(project.addressableId)
                 }
             }
         }
@@ -345,8 +359,18 @@ class NostrManager {
     // MARK: - Agent Management
     
     func getAvailableAgents(for projectId: String) -> [NDKProjectStatus.AgentStatus] {
+        print("🔍 getAvailableAgents - Looking for project: \(projectId)")
+        print("🔍 getAvailableAgents - Current projectStatuses keys: \(projectStatuses.keys)")
+        
         if let status = projectStatuses[projectId] {
+            print("🔍 getAvailableAgents - Found status for project")
+            print("🔍 getAvailableAgents - Available agents count: \(status.availableAgents.count)")
+            for agent in status.availableAgents {
+                print("🔍 getAvailableAgents - Agent: id=\(agent.id), slug=\(agent.slug), name=\(agent.name)")
+            }
             return status.availableAgents
+        } else {
+            print("🔍 getAvailableAgents - No status found for project: \(projectId)")
         }
         return []
     }
@@ -364,8 +388,8 @@ class NostrManager {
     }
     
     /// Get the full status for a project
-    func getProjectStatus(for projectId: String) -> NDKProjectStatus? {
-        projectStatuses[projectId]
+    func getProjectStatus(for projectAddressableId: String) -> NDKProjectStatus? {
+        projectStatuses[projectAddressableId]
     }
     
     /// Get project by ID

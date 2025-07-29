@@ -50,7 +50,7 @@ struct ConversationListView: View {
             )
         }
         .fullScreenCover(isPresented: $showVoiceOnlyConversation) {
-            VoiceOnlyConversationView(project: project)
+            VoiceRecordingView(project: project)
         }
         .confirmationDialog("Create New Conversation", isPresented: $showConversationOptions, titleVisibility: .visible) {
             Button("Text Conversation") {

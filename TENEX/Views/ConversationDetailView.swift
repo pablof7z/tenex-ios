@@ -182,10 +182,11 @@ struct ConversationDetailView: View {
         .navigationTitle(conversation.title)
         .navigationBarTitleDisplayMode(.inline)
         .fullScreenCover(isPresented: $isVoiceCallActive) {
-            VoiceOnlyConversationView(
+            VoiceRecordingView(
                 project: project,
                 replyToConversation: conversation,
-                lastVisibleMessage: replies.last ?? conversation.event
+                lastVisibleMessage: replies.last ?? conversation.event,
+                selectedAgents: selectedAgents
             )
         }
         .task {

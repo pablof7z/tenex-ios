@@ -120,21 +120,7 @@ struct ProjectTabView: View {
             )
         }
         .fullScreenCover(isPresented: $showVoiceOnlyConversation) {
-            VoiceOnlyConversationView(
-                project: project
-            )
-        }
-        .fullScreenCover(isPresented: $showVoiceRecordingForDocs) {
-            VoiceRecordingView { transcript, audioURL, duration, waveformAmplitudes in
-                Task {
-                    await createDocumentationRequest(
-                        transcript: transcript,
-                        audioURL: audioURL,
-                        duration: duration,
-                        waveformAmplitudes: waveformAmplitudes
-                    )
-                }
-            }
+            VoiceRecordingView(project: project)
         }
         .confirmationDialog("Create New Conversation", isPresented: $showConversationOptions, titleVisibility: .visible) {
             Button("Text Conversation") {
