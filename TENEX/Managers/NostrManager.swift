@@ -14,6 +14,12 @@ class NostrManager: NDKNostrManager {
     private var statusMonitoringTask: Task<Void, Never>?
     private var userProjects: [NDKProject] = []
     
+    // LLM config tracking
+    var projectLLMConfigs: [String: NDKLLMConfigChange] = [:] // projectId -> latest LLM config
+    
+    // Conversation tracking
+    var projectConversations: [String: [NDKConversation]] = [:] // projectId -> conversations
+    
     // MARK: - Configuration Overrides
     
     override var defaultRelays: [String] {
@@ -26,8 +32,8 @@ class NostrManager: NDKNostrManager {
         ]
     }
     
-    override var userRelaysKey: String {
-        "TENEXUserAddedRelays"
+    override var appRelaysKey: String {
+        "TENEXAppAddedRelays"
     }
     
     override var clientTagConfig: NDKClientTagConfig? {
@@ -61,6 +67,11 @@ class NostrManager: NDKNostrManager {
     func startStatusMonitoring(for user: NDKUser) async {
         // Cancel existing monitoring
         statusMonitoringTask?.cancel()
+        
+        // Start monitoring LLM configs
+        Task {
+            await monitorLLMConfigs()
+        }
         
         statusMonitoringTask = Task {
             // Stream projects as they arrive - never wait!
@@ -187,6 +198,69 @@ class NostrManager: NDKNostrManager {
             return status.availableAgents
         }
         return []
+    }
+    
+    // MARK: - State Access Helpers
+    
+    /// Get all tracked projects
+    var projects: [NDKProject] {
+        userProjects
+    }
+    
+    /// Check if a project is online
+    func isProjectOnline(_ projectId: String) -> Bool {
+        onlineProjects.contains(projectId)
+    }
+    
+    /// Get the full status for a project
+    func getProjectStatus(for projectId: String) -> NDKProjectStatus? {
+        projectStatuses[projectId]
+    }
+    
+    /// Get project by ID
+    func getProject(by projectId: String) -> NDKProject? {
+        userProjects.first { $0.id == projectId }
+    }
+    
+    /// Get project by addressable ID
+    func getProject(byAddressableId addressableId: String) -> NDKProject? {
+        userProjects.first { $0.addressableId == addressableId }
+    }
+    
+    /// Get LLM config for a project
+    func getLLMConfig(for projectId: String) -> NDKLLMConfigChange? {
+        projectLLMConfigs[projectId]
+    }
+    
+    /// Get conversations for a project
+    func getConversations(for projectId: String) -> [NDKConversation] {
+        projectConversations[projectId] ?? []
+    }
+    
+    // MARK: - LLM Config Monitoring
+    
+    func monitorLLMConfigs() async {
+        guard let ndk = ndk else { return }
+        
+        // Monitor LLM config changes for all projects
+        let configFilter = NDKFilter(
+            kinds: [TENEXEventKind.llmConfigChange]
+        )
+        
+        let dataSource = ndk.observe(
+            filter: configFilter,
+            maxAge: 0, // Always get fresh config updates
+            cachePolicy: .cacheWithNetwork
+        )
+        
+        for await event in dataSource.events {
+            let config = NDKLLMConfigChange(event: event)
+            if !config.projectId.isEmpty {
+                await MainActor.run {
+                    projectLLMConfigs[config.projectId] = config
+                }
+            }
+        }
     }
     
     // MARK: - Conversation Creation

@@ -4,12 +4,13 @@ import NDKSwift
 struct ProjectListView: View {
     @Environment(NostrManager.self) var nostrManager
     @State private var searchText = ""
-    @State private var projects: [NDKProject] = []
     @State private var conversationCounts: [String: Int] = [:] // projectId -> count
     @State private var lastActivityDates: [String: Date] = [:] // projectId -> date
-    @State private var projectStreamTask: Task<Void, Never>?
     
     var filteredAndSortedProjects: [NDKProject] {
+        // Get projects from NostrManager (single source of truth)
+        let projects = nostrManager.projects
+        
         // Filter by search
         let filtered = searchText.isEmpty ? projects : projects.filter { project in
             project.name.localizedCaseInsensitiveContains(searchText)
@@ -62,79 +63,16 @@ struct ProjectListView: View {
                 }
             }
             .task {
-                // Start streaming projects immediately when view appears
-                projectStreamTask = Task {
-                    await streamProjects()
+                // Stream conversations for existing projects
+                for project in nostrManager.projects {
+                    Task {
+                        await streamConversations(for: project)
+                    }
                 }
-            }
-            .onDisappear {
-                projectStreamTask?.cancel()
             }
         }
     }
     
-    private func streamProjects() async {
-        print("streamProjects called")
-        
-        // Get pubkey directly from the active session
-        guard let session = NDKAuthManager.shared.activeSession else {
-            print("No active session available")
-            print("Has active session: \(NDKAuthManager.shared.hasActiveSession)")
-            return
-        }
-        
-        let pubkey = session.pubkey
-        print("Using pubkey from session: \(pubkey)")
-        
-        // Create data source directly
-        let filter = NDKFilter(
-            authors: [pubkey],
-            kinds: [NDKProject.kind]
-        )
-        print("Creating filter with authors: \(filter.authors ?? []), kinds: \(filter.kinds ?? [])")
-        
-        // Try using the observe method with transform
-        let projectsDataSource = nostrManager.ndk.observe(
-            filter: filter,
-            maxAge: 0,
-            cachePolicy: .cacheWithNetwork,
-            transform: { event in
-                print("Transform called for event: \(event.id)")
-                return NDKProject(event: event)
-            }
-        )
-        
-        print("Created projectsDataSource with transform")
-        print("About to start streaming events...")
-        
-        // Stream project events as they arrive
-        print("Starting to stream project events...")
-        for await project in projectsDataSource.events {
-            print("Received project: \(project.id), title: \(project.title)")
-            
-            await MainActor.run {
-                // Update projects list
-                if !projects.contains(where: { $0.id == project.id }) {
-                    // Create new array to trigger SwiftUI update
-                    var updatedProjects = projects
-                    updatedProjects.append(project)
-                    projects = updatedProjects
-                    print("Added project to list. Total projects: \(projects.count)")
-                    
-                    // Start centralized project status monitoring for all projects
-                    nostrManager.startProjectStatusMonitoring(for: projects)
-                } else {
-                    print("Project already in list, skipping")
-                }
-                
-                // Start streaming conversations for this project
-                Task {
-                    await streamConversations(for: project)
-                }
-            }
-        }
-        print("Project stream ended")
-    }
     
     private func streamConversations(for project: NDKProject) async {
         let conversationFilter = NDKFilter(
@@ -204,6 +142,14 @@ struct ProjectRowView: View {
                     Text(project.name)
                         .font(.system(size: 17, weight: .medium))
                         .lineLimit(1)
+                    
+                    // Online status indicator
+                    if nostrManager.isProjectOnline(project.id) {
+                        Circle()
+                            .fill(Color.green)
+                            .frame(width: 8, height: 8)
+                            .padding(.leading, 4)
+                    }
                     
                     Spacer()
                     
