@@ -162,9 +162,7 @@ struct ConversationDetailView: View {
                     .cornerRadius(20)
                 
                 if messageText.isEmpty {
-                    Button(action: {
-                        isVoiceCallActive = true
-                    }) {
+                    NavigationLink(destination: CallView(conversationId: conversation.id, project: project)) {
                         Image(systemName: "phone.fill")
                             .font(.system(size: 22))
                             .foregroundColor(.blue)
@@ -286,7 +284,7 @@ struct ConversationDetailView: View {
         // Use NDKSwift's reactive observation for thread replies
         let filter = NDKFilter(
             kinds: [TENEXEventKind.threadReply],
-            tags: ["e": [conversation.id]]
+            tags: ["E": [conversation.id]]
         )
         
         let replyDataSource = nostrManager.ndk.observe(

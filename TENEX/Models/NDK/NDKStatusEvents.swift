@@ -44,15 +44,6 @@ class NDKProjectStatus {
             self.projectId = ""
         }
         
-        print("📊 NDKProjectStatus init - Event ID: \(event.id)")
-        print("📊 NDKProjectStatus init - Project ID: \(projectId)")
-        print("📊 NDKProjectStatus init - Total tags: \(event.tags.count)")
-        
-        // Debug print all tags
-        for (index, tag) in event.tags.enumerated() {
-            print("📊 NDKProjectStatus init - Tag[\(index)]: \(tag)")
-        }
-        
         // Parse available agents from tags
         // Format: ["agent", "<agent-pubkey>", "<agent-slug>"]
         self.availableAgents = event.tags.compactMap { tag in
@@ -64,8 +55,6 @@ class NDKProjectStatus {
             let pubkey = tag[1]
             let slug = tag[2]
             
-            print("📊 NDKProjectStatus init - Found agent: pubkey=\(pubkey), slug=\(slug)")
-            
             return AgentStatus(
                 id: pubkey,
                 slug: slug,
@@ -74,8 +63,6 @@ class NDKProjectStatus {
                 lastSeen: nil
             )
         }
-        
-        print("📊 NDKProjectStatus init - Total agents found: \(self.availableAgents.count)")
     }
     
     // Update status from newer event

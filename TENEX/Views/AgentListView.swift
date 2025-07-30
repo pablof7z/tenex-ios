@@ -1,141 +1,93 @@
 import SwiftUI
-import AVFoundation
-
-// Helper class for voice sample playback with completion
-@MainActor
-class VoiceSampleSynthesizer: NSObject, AVSpeechSynthesizerDelegate {
-    private let synthesizer = AVSpeechSynthesizer()
-    private var completion: (() -> Void)?
-    
-    init(completion: @escaping () -> Void) {
-        self.completion = completion
-        super.init()
-        synthesizer.delegate = self
-    }
-    
-    func speak(_ utterance: AVSpeechUtterance) {
-        synthesizer.speak(utterance)
-    }
-    
-    func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didFinish utterance: AVSpeechUtterance) {
-        completion?()
-    }
-}
+import NDKSwift
 
 struct AgentListView: View {
-    let agents: [NDKAgent]
-    @StateObject private var audioManager = AudioManager()
-    @State private var selectedAgent: NDKAgent?
-    @State private var showVoiceSelector = false
+    let agents: [NDKProjectStatus.AgentStatus]
     
     var body: some View {
-        List {
-            ForEach(agents) { agent in
-                AgentRowView(
-                    agent: agent,
-                    audioManager: audioManager,
-                    onVoiceSelect: {
-                        selectedAgent = agent
-                        showVoiceSelector = true
+        ScrollView {
+            LazyVStack(spacing: 0) {
+                ForEach(agents) { agent in
+                    NavigationLink(destination: AgentProfileView(agent: agent)) {
+                        AgentRowView(agent: agent)
                     }
-                )
+                    .buttonStyle(PlainButtonStyle())
+                    
+                    if agent.id != agents.last?.id {
+                        Divider()
+                            .padding(.leading, 76)
+                    }
+                }
             }
         }
-        .listStyle(.insetGrouped)
-        .sheet(isPresented: $showVoiceSelector) {
-            if let agent = selectedAgent {
-                VoiceSelectorView(
-                    agent: agent,
-                    audioManager: audioManager,
-                    isPresented: $showVoiceSelector
-                )
-            }
-        }
+        .background(Color(UIColor.systemBackground))
     }
 }
 
 struct AgentRowView: View {
-    let agent: NDKAgent
-    let audioManager: AudioManager
-    let onVoiceSelect: () -> Void
-    
-    @State private var isPlaying = false
-    
-    var currentVoice: String {
-        if let voiceId = audioManager.getVoiceForAgent(slug: agent.slug) {
-            return AudioManager.voiceOptions.first { $0.identifier == voiceId }?.name ?? "Default"
-        }
-        return "Auto-assigned"
-    }
+    let agent: NDKProjectStatus.AgentStatus
     
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            // Agent info
-            HStack {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(agent.name)
-                        .font(.headline)
+        HStack(spacing: 12) {
+            // Avatar
+            Circle()
+                .fill(getAgentColor(for: agent.slug))
+                .frame(width: 52, height: 52)
+                .overlay(
+                    Text(agent.name.prefix(2).uppercased())
+                        .font(.system(size: 20, weight: .semibold))
+                        .foregroundColor(.white)
+                )
+            
+            VStack(alignment: .leading, spacing: 4) {
+                Text(agent.name)
+                    .font(.system(size: 17, weight: .medium))
+                    .foregroundColor(.primary)
+                
+                HStack(spacing: 4) {
+                    Circle()
+                        .fill(agent.status == "available" ? Color.green : Color.gray)
+                        .frame(width: 8, height: 8)
                     
-                    if let role = agent.role {
-                        Text(role)
-                            .font(.caption)
+                    Text(agent.status)
+                        .font(.system(size: 15))
+                        .foregroundColor(.secondary)
+                    
+                    if let lastSeen = agent.lastSeen {
+                        Text("• \(lastSeen, style: .relative) ago")
+                            .font(.system(size: 15))
                             .foregroundColor(.secondary)
                     }
                 }
-                
-                Spacer()
-                
-                // Play sample button
-                Button(action: playVoiceSample) {
-                    Image(systemName: isPlaying ? "speaker.wave.2.fill" : "play.circle")
-                        .font(.title2)
-                        .foregroundColor(.blue)
-                }
-                .disabled(isPlaying)
             }
             
-            // Voice selection
-            HStack {
-                Text("Voice:")
-                    .font(.subheadline)
-                    .foregroundColor(.secondary)
-                
-                Button(action: onVoiceSelect) {
-                    HStack {
-                        Text(currentVoice)
-                            .font(.subheadline)
-                        Image(systemName: "chevron.right")
-                            .font(.caption)
-                    }
-                    .foregroundColor(.blue)
-                }
-            }
+            Spacer()
+            
+            Image(systemName: "chevron.right")
+                .font(.system(size: 14))
+                .foregroundColor(Color(.tertiaryLabel))
         }
-        .padding(.vertical, 4)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
+        .contentShape(Rectangle())
     }
     
-    private func playVoiceSample() {
-        isPlaying = true
-        Task {
-            let sampleText = "Hello, I'm \(agent.name). \(agent.description ?? "I'm here to help you with your tasks.")"
-            await audioManager.speakText(sampleText, agentPubkey: agent.pubkey, agentSlug: agent.slug) {
-                Task { @MainActor in
-                    isPlaying = false
-                }
-            }
-        }
+    private func getAgentColor(for slug: String) -> Color {
+        let colors: [Color] = [.blue, .purple, .orange, .green, .red, .pink, .indigo, .teal]
+        let index = abs(slug.hashValue) % colors.count
+        return colors[index]
     }
 }
 
+// Voice selector is now only accessible from the agent profile
 struct VoiceSelectorView: View {
-    let agent: NDKAgent
+    let agent: NDKProjectStatus.AgentStatus
     let audioManager: AudioManager
     @Binding var isPresented: Bool
     
     @State private var selectedVoiceId: String?
     @State private var isPlaying = false
     @State private var playingVoiceId: String?
-    @State private var voiceSynthesizer: VoiceSampleSynthesizer?
     
     var body: some View {
         NavigationView {
@@ -143,10 +95,8 @@ struct VoiceSelectorView: View {
                 Section {
                     ForEach(AudioManager.voiceOptions, id: \.identifier) { voice in
                         HStack {
-                            VStack(alignment: .leading) {
-                                Text(voice.name)
-                                    .font(.body)
-                            }
+                            Text(voice.name)
+                                .font(.body)
                             
                             Spacer()
                             
@@ -209,25 +159,21 @@ struct VoiceSelectorView: View {
         Task {
             let sampleText = "Hello, I'm \(agent.name). This is how I sound with this voice."
             
-            // Create a temporary utterance with the selected voice
-            let utterance = AVSpeechUtterance(string: sampleText)
-            utterance.rate = 0.52
-            utterance.pitchMultiplier = 1.0
-            utterance.volume = 0.9
+            // Temporarily set the voice for this agent to preview
+            let previousVoiceId = audioManager.getVoiceForAgent(slug: agent.slug)
+            audioManager.setVoiceForAgent(slug: agent.slug, voiceIdentifier: voiceId)
             
-            if let voice = AVSpeechSynthesisVoice(identifier: voiceId) {
-                utterance.voice = voice
-            }
-            
-            // Create a voice sample synthesizer with completion
-            voiceSynthesizer = VoiceSampleSynthesizer {
+            await audioManager.speakText(sampleText, agentPubkey: agent.id, agentSlug: agent.slug) {
                 Task { @MainActor in
                     isPlaying = false
                     playingVoiceId = nil
+                    
+                    // Restore previous voice if not saved
+                    if let previousId = previousVoiceId {
+                        audioManager.setVoiceForAgent(slug: agent.slug, voiceIdentifier: previousId)
+                    }
                 }
             }
-            
-            voiceSynthesizer?.speak(utterance)
         }
     }
 }

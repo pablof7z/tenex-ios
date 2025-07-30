@@ -673,6 +673,39 @@ class AudioManager: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, AVA
         }
     }
     
+    // Simple TTS method for CallView
+    func speak(_ text: String) async {
+        // Stop any current TTS
+        stopTTS()
+        
+        // Configure audio session for playback
+        do {
+            try await configureAudioSession(for: .playback)
+        } catch {
+            print("Failed to configure audio session for TTS: \(error)")
+            return
+        }
+        
+        let utterance = AVSpeechUtterance(string: text)
+        utterance.rate = 0.52
+        utterance.pitchMultiplier = 1.0
+        utterance.volume = 0.9
+        utterance.voice = AVSpeechSynthesisVoice(language: "en-US")
+        
+        await withCheckedContinuation { continuation in
+            speechCompletionHandler = {
+                continuation.resume()
+            }
+            synthesizer.speak(utterance)
+        }
+    }
+    
+    func stopTTS() {
+        synthesizer.stopSpeaking(at: .immediate)
+        speechCompletionHandler?()
+        speechCompletionHandler = nil
+    }
+    
     // MARK: - Cleanup
     
     func cleanupTemporaryAudioFiles() {

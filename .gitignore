@@ -127,3 +127,6 @@ test-results/
 # Maestro tests
 maestro-tests/screenshots/
 maestro-tests/outputs/
+
+# TENEX project files
+.tenex/

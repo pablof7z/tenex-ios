@@ -58,7 +58,8 @@ class NostrManager {
     
     var defaultRelays: [String] {
         [
-            "wss://relay.primal.net"
+            "wss://relay.primal.net",
+            "wss://tenex.chat"
         ]
     }
     
@@ -115,7 +116,8 @@ class NostrManager {
             enabledCategories: [
                 .general,
                 .subscription,
-                .cache
+                .cache,
+                .event
             ],
             logNetworkTraffic: true
         )
@@ -582,6 +584,23 @@ class NostrManager {
         
         // Logout from auth manager
         authManager?.logout()
+    }
+    
+    // MARK: - Agent Lessons
+    
+    func streamAgentLessons(agentPubkey: String) async -> AsyncStream<NDKEvent> {
+        let filter = NDKFilter(
+            authors: [agentPubkey],
+            kinds: [TENEXEventKind.agentLesson]
+        )
+        
+        let dataSource = ndk.observe(
+            filter: filter,
+            maxAge: 600, // Use cache if less than 10 minutes old
+            cachePolicy: .cacheWithNetwork
+        )
+        
+        return dataSource.events
     }
 }
 

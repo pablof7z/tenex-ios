@@ -18,7 +18,7 @@ struct MainTabView: View {
         }
         .task {
             // Start monitoring projects and status when the main view loads
-            if let user = await nostrManager.currentUser {
+            if let user = nostrManager.currentUser {
                 await nostrManager.startStatusMonitoring(for: user)
             }
         }

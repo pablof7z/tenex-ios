@@ -69,29 +69,7 @@ struct ProjectTabView: View {
                         description: Text("Waiting for project to come online...")
                     )
                 } else {
-                    List(agents) { agent in
-                        HStack {
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text(agent.slug)
-                                    .font(.headline)
-                                Text("Pubkey: \(agent.id)")
-                                    .font(.caption)
-                                    .foregroundColor(.secondary)
-                                    .lineLimit(1)
-                                    .truncationMode(.middle)
-                            }
-                            
-                            Spacer()
-                            
-                            if agent.status == "available" {
-                                Image(systemName: "circle.fill")
-                                    .foregroundColor(.green)
-                                    .font(.caption)
-                            }
-                        }
-                        .padding(.vertical, 4)
-                    }
-                    .listStyle(.plain)
+                    AgentListView(agents: agents)
                 }
             }
         }

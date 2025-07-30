@@ -37,10 +37,10 @@ struct WaveformView: View {
                 }
             }
         }
-        .onChange(of: isRecording) { newValue in
+        .onChange(of: isRecording) {
             updateAnimation()
         }
-        .onChange(of: isPaused) { _ in
+        .onChange(of: isPaused) {
             updateAnimation()
         }
     }
