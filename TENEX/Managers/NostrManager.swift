@@ -42,14 +42,7 @@ class NostrManager {
     
     private(set) var isConnected = false
     private(set) var isInitialized = false
-    private var _ndk: NDK?
-    
-    var ndk: NDK {
-        guard let ndk = _ndk else {
-            fatalError("NDK accessed before initialization. Check isInitialized before accessing ndk.")
-        }
-        return ndk
-    }
+    private(set) var ndk: NDK
     
     var cache: NDKSQLiteCache?
     var zapManager: NDKZapManager?
@@ -58,7 +51,6 @@ class NostrManager {
     
     var defaultRelays: [String] {
         [
-            "wss://relay.primal.net",
             "wss://tenex.chat"
         ]
     }
@@ -90,8 +82,27 @@ class NostrManager {
     // MARK: - Initialization
     
     init() {
+        // Initialize NDK synchronously first
+        let defaultRelayUrls = [
+            "wss://relay.primal.net"
+        ]
+        let appAddedRelays = UserDefaults.standard.stringArray(forKey: "appAddedRelays") ?? []
+        let allRelays = defaultRelayUrls + appAddedRelays
+        ndk = NDK(relayUrls: allRelays)
+        
+        // Then setup cache and reinitialize if needed
         Task {
-            await setupNDK()
+            do {
+                let sqliteCache = try await NDKSQLiteCache()
+                cache = sqliteCache
+                // Reinitialize NDK with cache
+                ndk = NDK(relayUrls: allRelays, cache: sqliteCache)
+                NDKLogger.log(.info, category: .general, "NDK reinitialized with SQLite cache")
+                await setupNDK()
+            } catch {
+                NDKLogger.log(.error, category: .general, "Failed to initialize SQLite cache: \(error). Continuing without cache.")
+                await setupNDK()
+            }
         }
     }
     
@@ -122,18 +133,6 @@ class NostrManager {
             logNetworkTraffic: true
         )
         
-        // Initialize SQLite cache for better performance and offline access
-        do {
-            cache = try await NDKSQLiteCache()
-            let allRelays = getAllRelays()
-            _ndk = NDK(relayUrls: allRelays, cache: cache)
-            NDKLogger.log(.info, category: .general, "NDK initialized with SQLite cache and \(allRelays.count) relays: \(allRelays) (outbox disabled)")
-        } catch {
-            NDKLogger.log(.error, category: .general, "Failed to initialize SQLite cache: \(error). Continuing without cache.")
-            let allRelays = getAllRelays()
-            _ndk = NDK(relayUrls: allRelays)
-            NDKLogger.log(.info, category: .general, "NDK initialized without cache and \(allRelays.count) relays: \(allRelays) (outbox disabled)")
-        }
 
         // Configure client tags if provided
         if let config = clientTagConfig {
@@ -182,9 +181,12 @@ class NostrManager {
             UserDefaults.standard.set(appRelays, forKey: appRelaysKey)
             
             // Add to NDK and connect
-            let relay = await ndk.addRelayAndConnect(relayURL)
-            if relay != nil {
+            let relay = await ndk.addRelay(relayURL)
+            do {
+                try await relay.connect()
                 NDKLogger.log(.info, category: .general, "Added and connected to relay: \(relayURL)")
+            } catch {
+                NDKLogger.log(.error, category: .general, "Failed to connect to relay \(relayURL): \(error)")
             }
         }
     }

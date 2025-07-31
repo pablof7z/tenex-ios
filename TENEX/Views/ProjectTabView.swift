@@ -178,7 +178,7 @@ struct ProjectTabView: View {
     ) async {
         do {
             // Format the content with the transcript
-            let content = "Create a spec document with this. <transcript>\(transcript)</transcript>. This is a transcript, you might need to clean it up, format it, but don't change the essence of it."
+            let content = "Save this transcription in a project document. <transcript>\(transcript)</transcript>."
             
             // Find project manager agent
             var mentionedAgents: [String] = []
