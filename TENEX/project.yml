@@ -32,4 +32,4 @@ targets:
 packages:
   NDKSwift:
     url: https://github.com/pablof7z/NDKSwift
-    exactVersion: 0.11
+    branch: master

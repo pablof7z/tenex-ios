@@ -84,7 +84,7 @@ class NostrManager {
     init() {
         // Initialize NDK synchronously first
         let defaultRelayUrls = [
-            "wss://relay.primal.net"
+            "wss://tenex.chat"
         ]
         let appAddedRelays = UserDefaults.standard.stringArray(forKey: "appAddedRelays") ?? []
         let allRelays = defaultRelayUrls + appAddedRelays
@@ -363,18 +363,8 @@ class NostrManager {
     // MARK: - Agent Management
     
     func getAvailableAgents(for projectId: String) -> [NDKProjectStatus.AgentStatus] {
-        print("🔍 getAvailableAgents - Looking for project: \(projectId)")
-        print("🔍 getAvailableAgents - Current projectStatuses keys: \(projectStatuses.keys)")
-        
         if let status = projectStatuses[projectId] {
-            print("🔍 getAvailableAgents - Found status for project")
-            print("🔍 getAvailableAgents - Available agents count: \(status.availableAgents.count)")
-            for agent in status.availableAgents {
-                print("🔍 getAvailableAgents - Agent: id=\(agent.id), slug=\(agent.slug), name=\(agent.name)")
-            }
             return status.availableAgents
-        } else {
-            print("🔍 getAvailableAgents - No status found for project: \(projectId)")
         }
         return []
     }
@@ -532,6 +522,33 @@ class NostrManager {
         return event
     }
     
+    // MARK: - Lesson Reply
+    
+    func replyToLesson(
+        _ lesson: NDKLesson,
+        content: String,
+        agentPubkey: String
+    ) async throws -> NDKEvent {
+        guard let signer = ndk.signer else {
+            throw NDKError.notConfigured("No signer available")
+        }
+        
+        var builder = NDKEventBuilder(ndk: ndk)
+            .content(content)
+            .kind(TENEXEventKind.threadReply)
+            .tag(["e", lesson.id, "", "root"])
+            .tag(["E", lesson.id]) // Uppercase E for lesson thread
+            .tag(["a", lesson.projectId])
+            .tag(["p", agentPubkey]) // Mention the agent
+        
+        let event = try await builder.build(signer: signer)
+        let publishedRelays = try await ndk.publish(event)
+        
+        print("Created lesson comment on \(publishedRelays.count) relays")
+        
+        return event
+    }
+    
     // MARK: - User Management
     
     @MainActor
@@ -595,11 +612,13 @@ class NostrManager {
             authors: [agentPubkey],
             kinds: [TENEXEventKind.agentLesson]
         )
+
+        print("streamAgentLessons for \(agentPubkey) (kind: \(TENEXEventKind.agentLesson))")
         
         let dataSource = ndk.observe(
             filter: filter,
-            maxAge: 600, // Use cache if less than 10 minutes old
-            cachePolicy: .cacheWithNetwork
+            maxAge: 0,
+            cachePolicy: .networkOnly
         )
         
         return dataSource.events

@@ -9,10 +9,12 @@ struct TENEXApp: App {
         // Enable NDK network traffic logging
         NDKLogger.logNetworkTraffic = true
         NDKLogger.configure(
-            logLevel: .debug,
+            logLevel: .trace,
             enabledCategories: [
                 .subscription,
-                .cache
+                .cache,
+                .event,
+                .outbox
             ],
             logNetworkTraffic: true
         )

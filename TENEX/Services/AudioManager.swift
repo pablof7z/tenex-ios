@@ -417,9 +417,11 @@ class AudioManager: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, AVA
     
     // MARK: - AVSpeechSynthesizerDelegate
     
-    func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didFinish utterance: AVSpeechUtterance) {
-        speechCompletionHandler?()
-        speechCompletionHandler = nil
+    nonisolated func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didFinish utterance: AVSpeechUtterance) {
+        Task { @MainActor in
+            speechCompletionHandler?()
+            speechCompletionHandler = nil
+        }
     }
     
     // MARK: - Helper
@@ -596,13 +598,17 @@ class AudioManager: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, AVA
     
     // MARK: - AVAudioPlayerDelegate
     
-    func audioPlayerDidFinishPlaying(_ player: AVAudioPlayer, successfully flag: Bool) {
-        stopAudioPlayback()
+    nonisolated func audioPlayerDidFinishPlaying(_ player: AVAudioPlayer, successfully flag: Bool) {
+        Task { @MainActor in
+            stopAudioPlayback()
+        }
     }
     
-    func audioPlayerDecodeErrorDidOccur(_ player: AVAudioPlayer, error: Error?) {
-        self.error = "Audio decode error: \(error?.localizedDescription ?? "Unknown error")"
-        stopAudioPlayback()
+    nonisolated func audioPlayerDecodeErrorDidOccur(_ player: AVAudioPlayer, error: Error?) {
+        Task { @MainActor in
+            self.error = "Audio decode error: \(error?.localizedDescription ?? "Unknown error")"
+            stopAudioPlayback()
+        }
     }
     
     // MARK: - Text-to-Speech for Messages

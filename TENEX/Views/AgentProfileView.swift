@@ -134,6 +134,8 @@ struct AgentProfileView: View {
             
             for await event in subscription {
                 if Task.isCancelled { break }
+
+                print("lesson event")
                 
                 await MainActor.run {
                     let lesson = NDKLesson(event: event)
@@ -163,30 +165,32 @@ struct LessonsTabView: View {
         } else {
             List {
                 ForEach(lessons) { lesson in
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text(lesson.title)
-                            .font(.headline)
-                        
-                        Text(lesson.content)
-                            .font(.body)
-                            .foregroundColor(.secondary)
-                            .lineLimit(3)
-                        
-                        HStack {
-                            if let lessonType = lesson.lessonType {
-                                Label(lessonType, systemImage: "tag")
-                                    .font(.caption)
-                                    .foregroundColor(.blue)
-                            }
+                    NavigationLink(destination: LessonDetailView(lesson: lesson, agent: agent)) {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text(lesson.title)
+                                .font(.headline)
                             
-                            Spacer()
-                            
-                            Text(lesson.createdAt, style: .relative)
-                                .font(.caption)
+                            Text(lesson.content)
+                                .font(.body)
                                 .foregroundColor(.secondary)
+                                .lineLimit(3)
+                            
+                            HStack {
+                                if let lessonType = lesson.lessonType {
+                                    Label(lessonType, systemImage: "tag")
+                                        .font(.caption)
+                                        .foregroundColor(.blue)
+                                }
+                                
+                                Spacer()
+                                
+                                Text(lesson.createdAt, style: .relative)
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                            }
                         }
+                        .padding(.vertical, 4)
                     }
-                    .padding(.vertical, 4)
                 }
             }
             .listStyle(.plain)
