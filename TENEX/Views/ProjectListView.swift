@@ -9,6 +9,7 @@ struct ProjectListView: View {
     @State private var lessonCounts: [String: Int] = [:] // projectId -> lesson count
     @State private var projectLessons: [String: [NDKLesson]] = [:] // projectId -> lessons
     @State private var projectConversations: [String: [NDKConversation]] = [:] // projectId -> conversations
+    @State private var showCreateProject = false
     
     var filteredAndSortedProjects: [NDKProject] {
         // Get projects from NostrManager (single source of truth)
@@ -69,11 +70,15 @@ struct ProjectListView: View {
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button(action: {
-                        // TODO: Add new project creation with optimistic publishing
+                        showCreateProject = true
                     }) {
                         Image(systemName: "plus")
                     }
+                    .accessibilityLabel("Create Project")
                 }
+            }
+            .sheet(isPresented: $showCreateProject) {
+                CreateProjectView()
             }
             .task {
                 // Stream conversations and lessons for existing projects
@@ -197,14 +202,31 @@ struct ProjectRowView: View {
         HStack(spacing: 12) {
             // Avatar with online indicator
             ZStack(alignment: .bottomTrailing) {
-                Circle()
-                    .fill(Color.gray.opacity(0.3))
-                    .frame(width: 56, height: 56)
-                    .overlay {
-                        Text(project.name.prefix(1).uppercased())
-                            .font(.system(size: 24, weight: .medium))
-                            .foregroundColor(.white)
+                if let pictureURL = project.picture, let url = URL(string: pictureURL) {
+                    AsyncImage(url: url) { image in
+                        image
+                            .resizable()
+                            .aspectRatio(contentMode: .fill)
+                    } placeholder: {
+                        Circle()
+                            .fill(Color.gray.opacity(0.3))
+                            .overlay {
+                                ProgressView()
+                                    .tint(.white)
+                            }
                     }
+                    .frame(width: 56, height: 56)
+                    .clipShape(Circle())
+                } else {
+                    Circle()
+                        .fill(Color.gray.opacity(0.3))
+                        .frame(width: 56, height: 56)
+                        .overlay {
+                            Text(project.name.prefix(1).uppercased())
+                                .font(.system(size: 24, weight: .medium))
+                                .foregroundColor(.white)
+                        }
+                }
                 
                 // Online status indicator aligned with avatar
                 if nostrManager.isProjectOnline(project.id) {

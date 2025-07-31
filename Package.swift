@@ -7,7 +7,7 @@ let package = Package(
         .iOS(.v17)
     ],
     dependencies: [
-        .package(url: "https://github.com/pablof7z/NDKSwift", branch: "master")
+        .package(url: "https://github.com/pablof7z/NDKSwift", revision: "9c9da851c57f28987f588084526751976c2b587a")
     ],
     targets: []
 )

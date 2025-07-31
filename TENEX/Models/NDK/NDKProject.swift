@@ -12,6 +12,7 @@ class NDKProject: Identifiable {
     var name: String
     var title: String
     var description: String?
+    var picture: String?
     var repo: String?
     var agentIds: [String] = []
     var mcpIds: [String] = []
@@ -33,6 +34,9 @@ class NDKProject: Identifiable {
         
         // Content is the description
         self.description = event.content.isEmpty ? nil : event.content
+        
+        // Parse picture
+        self.picture = event.tags.first(where: { $0.first == "picture" })?.dropFirst().first
         
         // Parse repo
         self.repo = event.tags.first(where: { $0.first == "repo" })?.dropFirst().first
@@ -69,6 +73,11 @@ class NDKProject: Identifiable {
         // Update description
         if !event.content.isEmpty {
             self.description = event.content
+        }
+        
+        // Update picture
+        if let newPicture = event.tags.first(where: { $0.first == "picture" })?.dropFirst().first {
+            self.picture = newPicture
         }
         
         // Update repo

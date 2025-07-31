@@ -162,7 +162,7 @@ struct ConversationDetailView: View {
                     .cornerRadius(20)
                 
                 if messageText.isEmpty {
-                    NavigationLink(destination: CallView(conversationId: conversation.id, project: project)) {
+                    NavigationLink(destination: CallView(conversation: conversation, project: project)) {
                         Image(systemName: "phone.fill")
                             .font(.system(size: 22))
                             .foregroundColor(.blue)

@@ -1,0 +1,28 @@
+appId: com.tenex.app
+---
+- launchApp
+
+# If we see the Chats tab, the app is already logged in - test passes
+- runFlow:
+    when:
+      visible: "Chats"
+    commands:
+      - assertVisible: "Settings"
+      - stopApp
+
+# Otherwise, proceed with login
+- assertVisible: "TENEX"
+
+# Try to find the private key field by placeholder text
+- tapOn: 
+    text: "nsec1..."
+- inputText: "nsec12savhryuupdyqvjm25432ptdqnzktfx9hclvd2zw6vf7vvej9cys8au60y"
+
+# Tap the Sign In button
+- tapOn: "Sign In"
+
+# Wait for login to complete and verify we see the main tab view
+- extendedWaitUntil:
+    visible: "Chats"
+    timeout: 15000
+- assertVisible: "Settings"

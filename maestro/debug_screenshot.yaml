@@ -1,0 +1,4 @@
+appId: com.tenex.app
+---
+- launchApp
+- takeScreenshot

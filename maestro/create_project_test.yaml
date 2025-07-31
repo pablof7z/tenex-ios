@@ -1,0 +1,78 @@
+appId: com.tenex.app
+---
+- launchApp
+- waitForAnimationToEnd
+
+# Make sure we're on Projects tab
+- assertVisible: "No Projects"
+
+# Wait a moment for UI to settle
+- waitForAnimationToEnd
+
+# Tap the + button with absolute coordinates
+- tapOn:
+    point: "673,135"
+
+# Wait for sheet to appear
+- extendedWaitUntil:
+    visible: "New Project"
+    timeout: 5000
+
+# Fill in project details
+- tapOn: "Project Name"
+- inputText: "Test Project ${TIMESTAMP}"
+
+- tapOn: "Description"
+- inputText: "This is a test project created by Maestro automation"
+
+- tapOn: "Hashtags (comma separated)"
+- inputText: "test, automation, maestro"
+
+# Scroll down to see additional fields
+- scroll
+
+- tapOn: "Repository URL"
+- inputText: "https://github.com/test/repo"
+
+- tapOn: "Logo Image URL"
+- inputText: "https://example.com/logo.png"
+
+# Select agents
+- tapOn: "Select Agents"
+
+# Wait for agents to load
+- extendedWaitUntil:
+    visible: "Select Agents"
+    timeout: 10000
+
+# Select first agent if available
+- runFlow:
+    when:
+      visible:
+        id: "circle"
+    commands:
+      - tapOn:
+          id: "circle"
+          index: 0
+
+# Tap Done to return to project creation
+- tapOn: "Done"
+
+# Create the project
+- tapOn: "Create"
+
+# Wait for project creation to complete
+- extendedWaitUntil:
+    visible: "Test Project ${TIMESTAMP}"
+    timeout: 20000
+
+# Verify the project appears in the list
+- assertVisible: "Test Project ${TIMESTAMP}"
+- assertVisible: "This is a test project created by Maestro automation"
+
+# Tap on the project to verify it opens correctly
+- tapOn: "Test Project ${TIMESTAMP}"
+
+# Verify we're in the project view
+- assertVisible: "Conversations"
+- assertVisible: "Settings"

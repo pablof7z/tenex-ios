@@ -282,17 +282,10 @@ class NostrManager {
         
         // Process events as they stream in
         for await event in dataSource.events {
-            print("📡 monitorProjectStatus - Received status event for project: \(project.id)")
-            print("📡 monitorProjectStatus - Event ID: \(event.id)")
-            print("📡 monitorProjectStatus - Event content: \(event.content)")
-            
             let status = NDKProjectStatus(event: event)
-            print("📡 monitorProjectStatus - Parsed status projectId: \(status.projectId)")
-            print("📡 monitorProjectStatus - Parsed agents count: \(status.availableAgents.count)")
-            
+
             if !status.projectId.isEmpty {
                 await MainActor.run {
-                    print("📡 monitorProjectStatus - Storing status for project.addressableId: \(project.addressableId)")
                     projectStatuses[project.addressableId] = status
                     // For now, consider all projects with status as online
                     onlineProjects.insert(project.addressableId)
@@ -459,7 +452,8 @@ class NostrManager {
         in project: NDKProject,
         title: String? = nil,
         content: String,
-        mentionedAgentPubkeys: [String] = []
+        mentionedAgentPubkeys: [String] = [],
+        isTranscription: Bool = false
     ) async throws -> NDKConversation {
         guard let signer = ndk.signer else {
             throw NDKError.notConfigured("No signer available")
@@ -472,6 +466,10 @@ class NostrManager {
         
         if let title = title {
             builder = builder.tag(["title", title])
+        }
+        
+        if isTranscription {
+            builder = builder.tag(["transcription", "voice", "may-contain-errors"])
         }
         
         for agentPubkey in mentionedAgentPubkeys {
@@ -492,7 +490,8 @@ class NostrManager {
         _ conversation: NDKConversation,
         content: String,
         mentionedAgentPubkeys: [String] = [],
-        lastVisibleMessage: NDKEvent? = nil
+        lastVisibleMessage: NDKEvent? = nil,
+        isTranscription: Bool = false
     ) async throws -> NDKEvent {
         guard let signer = ndk.signer else {
             throw NDKError.notConfigured("No signer available")
@@ -501,12 +500,16 @@ class NostrManager {
         var builder = NDKEventBuilder(ndk: ndk)
             .content(content)
             .kind(TENEXEventKind.threadReply)
-            .tag(["e", conversation.id, "", "root"])
+            .tag(["E", conversation.id, "", "root"])
             .tag(["a", conversation.projectId])
         
         // Add reply tag to the last visible message if provided
         if let lastMessage = lastVisibleMessage {
             builder = builder.tag(["e", lastMessage.id, "", "reply"])
+        }
+        
+        if isTranscription {
+            builder = builder.tag(["transcription", "voice", "may-contain-errors"])
         }
         
         // Add pubkey mentions
@@ -603,6 +606,21 @@ class NostrManager {
         
         // Logout from auth manager
         authManager?.logout()
+    }
+    
+    // MARK: - Project Management
+    
+    /// Add a newly created project to the local list
+    func addProject(_ project: NDKProject) {
+        // Check if project already exists
+        if !userProjects.contains(where: { $0.addressableId == project.addressableId }) {
+            userProjects.append(project)
+            
+            // Start monitoring status for this project
+            Task {
+                await monitorProjectStatus(for: project)
+            }
+        }
     }
     
     // MARK: - Agent Lessons

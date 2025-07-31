@@ -130,3 +130,4 @@ maestro-tests/outputs/
 
 # TENEX project files
 .tenex/
+*.png

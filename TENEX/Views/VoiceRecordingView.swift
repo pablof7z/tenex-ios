@@ -12,6 +12,7 @@ struct VoiceRecordingView: View {
     let lastVisibleMessage: NDKEvent?
     let selectedAgents: Set<String>
     let onConversationCreated: ((NDKConversation) -> Void)?
+    let onAudioRecorded: ((URL, String, TimeInterval, [Float]) -> Void)?
     
     @Environment(\.dismiss) var dismiss
     @Environment(\.colorScheme) var colorScheme
@@ -37,12 +38,14 @@ struct VoiceRecordingView: View {
          replyToConversation: NDKConversation? = nil,
          lastVisibleMessage: NDKEvent? = nil,
          selectedAgents: Set<String> = [],
-         onConversationCreated: ((NDKConversation) -> Void)? = nil) {
+         onConversationCreated: ((NDKConversation) -> Void)? = nil,
+         onAudioRecorded: ((URL, String, TimeInterval, [Float]) -> Void)? = nil) {
         self.project = project
         self.replyToConversation = replyToConversation
         self.lastVisibleMessage = lastVisibleMessage
         self.selectedAgents = selectedAgents
         self.onConversationCreated = onConversationCreated
+        self.onAudioRecorded = onAudioRecorded
     }
     
     var formattedDuration: String {
@@ -360,13 +363,21 @@ struct VoiceRecordingView: View {
         
         Task {
             do {
+                // If we have a custom audio handler, use that instead
+                if let onAudioRecorded = onAudioRecorded {
+                    onAudioRecorded(audioURL, transcribedText, recordingDuration, waveformAmplitudes)
+                    dismiss()
+                    return
+                }
+                
                 if let existingConversation = replyToConversation {
                     // Create a voice reply to the existing conversation
                     let replyEvent = try await nostrManager.replyToConversation(
                         existingConversation,
                         content: transcribedText,
                         mentionedAgentPubkeys: Array(selectedAgents),
-                        lastVisibleMessage: lastVisibleMessage
+                        lastVisibleMessage: lastVisibleMessage,
+                        isTranscription: true
                     )
                     
                     // Upload audio and create audio reply event
@@ -383,7 +394,8 @@ struct VoiceRecordingView: View {
                         in: project,
                         title: nil,
                         content: transcribedText,
-                        mentionedAgentPubkeys: Array(selectedAgents)
+                        mentionedAgentPubkeys: Array(selectedAgents),
+                        isTranscription: true
                     )
                     
                     // Upload audio to blossom server and create audio event

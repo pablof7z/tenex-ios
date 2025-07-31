@@ -1,6 +1,5 @@
 import SwiftUI
 import NDKSwift
-import CryptoKit
 
 struct ProjectTabView: View {
     let project: NDKProject
@@ -113,6 +112,14 @@ struct ProjectTabView: View {
         } message: {
             Text("Choose how you want to start your conversation")
         }
+        .fullScreenCover(isPresented: $showVoiceRecordingForDocs) {
+            DocumentationRecordingView(
+                project: project,
+                onDocumentationCreated: {
+                    showVoiceRecordingForDocs = false
+                }
+            )
+        }
         .task {
             // Start streaming data
             conversationStreamTask = Task {
@@ -170,106 +177,6 @@ struct ProjectTabView: View {
         }
     }
     
-    private func createDocumentationRequest(
-        transcript: String,
-        audioURL: URL,
-        duration: TimeInterval,
-        waveformAmplitudes: [Float]
-    ) async {
-        do {
-            // Format the content with the transcript
-            let content = "Save this transcription in a project document. <transcript>\(transcript)</transcript>."
-            
-            // Find project manager agent
-            var mentionedAgents: [String] = []
-            let projectManagerAgent = nostrManager.getAvailableAgents(for: project.addressableId)
-                .first { $0.slug == "project-manager" }
-            
-            if let projectManager = projectManagerAgent {
-                mentionedAgents.append(projectManager.id)
-            }
-            
-            // Create new conversation
-            let conversation = try await nostrManager.createConversation(
-                in: project,
-                title: nil,
-                content: content,
-                mentionedAgentPubkeys: mentionedAgents
-            )
-            
-            // Upload audio and create audio event
-            try await uploadAudioAndCreateEvent(
-                audioURL: audioURL,
-                conversation: conversation,
-                transcription: transcript,
-                duration: duration,
-                waveformAmplitudes: waveformAmplitudes,
-                mentionedAgentPubkeys: mentionedAgents
-            )
-        } catch {
-            print("Failed to create documentation request: \(error)")
-        }
-    }
-    
-    private func uploadAudioAndCreateEvent(
-        audioURL: URL,
-        conversation: NDKConversation,
-        transcription: String,
-        duration: TimeInterval,
-        waveformAmplitudes: [Float],
-        mentionedAgentPubkeys: [String]
-    ) async throws {
-        // Read audio data from file
-        let audioData = try Data(contentsOf: audioURL)
-        
-        // Upload audio file to blossom server using BlossomClient
-        let blossomClient = BlossomClient()
-        let uploadResult = try await blossomClient.uploadWithAuth(
-            data: audioData,
-            mimeType: "audio/m4a",
-            to: "https://blossom.primal.net",
-            signer: nostrManager.ndk.signer!,
-            ndk: nostrManager.ndk
-        )
-        
-        let blossomURL = URL(string: uploadResult.url)!
-        
-        // Create waveform data for imeta tag
-        let waveformString = waveformAmplitudes
-            .map { String(format: "%.2f", $0) }
-            .joined(separator: " ")
-        
-        // Create audio event per NIP-94 (kind 1063 for file metadata)
-        var builder = NDKEventBuilder(ndk: nostrManager.ndk)
-            .content(transcription) // NIP-94 uses content for description
-            .kind(1063) // NIP-94 file metadata event
-            .tag(["url", blossomURL.absoluteString])
-            .tag(["m", "audio/m4a"]) // MIME type
-            .tag(["x", calculateSHA256(of: audioData)]) // File hash
-            .tag(["size", String(audioData.count)]) // File size in bytes
-            .tag(["e", conversation.id]) // Reference the conversation
-            .tag(["a", project.addressableId]) // Reference the project
-        
-        // Add optional tags
-        if !waveformString.isEmpty {
-            builder = builder
-                .tag(["waveform", waveformString])
-                .tag(["duration", String(Int(duration))])
-        }
-        
-        // Add agent mentions using p tags
-        for agentPubkey in mentionedAgentPubkeys {
-            builder = builder.tag(["p", agentPubkey])
-        }
-        
-        let audioEvent = try await builder.build()
-        try await nostrManager.ndk.publish(audioEvent)
-    }
-    
-    private func calculateSHA256(of data: Data) -> String {
-        let digest = SHA256.hash(data: data)
-        return digest.compactMap { String(format: "%02x", $0) }.joined()
-    }
 }
 
 struct TabButton: View {

@@ -1,9 +1,10 @@
 import SwiftUI
 import NDKSwift
 import AVFoundation
+import CryptoKit
 
 struct CallView: View {
-    let conversationId: String
+    let conversation: NDKConversation
     let project: NDKProject
     
     @Environment(NostrManager.self) var nostrManager
@@ -15,12 +16,21 @@ struct CallView: View {
     @State private var streamingSubscription: Task<Void, Never>?
     @State private var lastSpokenContent: [String: String] = [:] // agentPubkey -> last spoken content
     @State private var isCallActive = true
+    @State private var isShowingVoiceRecorder = false
+    @State private var lastSpeakingAgent: String? = nil
+    @State private var isRecording = false
+    @State private var currentTranscript = ""
+    @State private var audioURL: URL?
+    @State private var recordingStartTime: Date?
+    @State private var waveformAmplitudes: [Float] = []
+    @State private var currentAmplitude: Float = 0.0
     
     struct AgentResponse {
         let agentPubkey: String
         var content: String
         let timestamp: Date
         var hasFinishedSpeaking: Bool = false
+        var event: NDKEvent // Store the full event for replies
     }
     
     var body: some View {
@@ -91,6 +101,19 @@ struct CallView: View {
                     
                     // Bottom controls
                     VStack(spacing: 16) {
+                        // Show transcript while recording
+                        if isRecording && !currentTranscript.isEmpty {
+                            Text(currentTranscript)
+                                .font(.system(size: 14, weight: .medium))
+                                .foregroundColor(.white.opacity(0.9))
+                                .multilineTextAlignment(.center)
+                                .padding(.horizontal, 20)
+                                .padding(.vertical, 10)
+                                .background(Color.white.opacity(0.1))
+                                .cornerRadius(20)
+                                .transition(.opacity)
+                        }
+                        
                         // Connection status
                         HStack(spacing: 6) {
                             Circle()
@@ -102,19 +125,29 @@ struct CallView: View {
                                 .foregroundColor(.white.opacity(0.7))
                         }
                         
-                        // End call button
-                        Button(action: endCall) {
-                            ZStack {
-                                Circle()
-                                    .fill(Color.red)
-                                    .frame(width: 72, height: 72)
-                                
-                                Image(systemName: "phone.down.fill")
-                                    .font(.system(size: 28, weight: .semibold))
-                                    .foregroundColor(.white)
+                        // Call controls
+                        HStack(spacing: 24) {
+                            // Microphone button
+                            VoiceReactiveMicButton(
+                                isRecording: isRecording,
+                                currentAmplitude: currentAmplitude,
+                                action: toggleRecording
+                            )
+                            
+                            // End call button
+                            Button(action: endCall) {
+                                ZStack {
+                                    Circle()
+                                        .fill(Color.red)
+                                        .frame(width: 72, height: 72)
+                                    
+                                    Image(systemName: "phone.down.fill")
+                                        .font(.system(size: 28, weight: .semibold))
+                                        .foregroundColor(.white)
+                                }
                             }
+                            .shadow(color: Color.red.opacity(0.4), radius: 10, x: 0, y: 5)
                         }
-                        .shadow(color: Color.red.opacity(0.4), radius: 10, x: 0, y: 5)
                     }
                     .padding(.bottom, geometry.safeAreaInsets.bottom + 30)
                 }
@@ -129,6 +162,9 @@ struct CallView: View {
         .onDisappear {
             streamingSubscription?.cancel()
             audioManager.stopTTS()
+            if isRecording {
+                audioManager.stopRecording()
+            }
         }
     }
     
@@ -136,7 +172,7 @@ struct CallView: View {
         // Subscribe to kind 21111 events that tag this conversation
         let filter = NDKFilter(
             kinds: [21111], // Agent streaming responses
-            tags: ["e": [conversationId]]
+            tags: ["e": [conversation.id]]
         )
         
         let responseSource = nostrManager.ndk.subscribe(
@@ -156,12 +192,14 @@ struct CallView: View {
         // Update or create agent response
         if var existingResponse = agentResponses[agentPubkey] {
             existingResponse.content = newContent
+            existingResponse.event = event
             agentResponses[agentPubkey] = existingResponse
         } else {
             agentResponses[agentPubkey] = AgentResponse(
                 agentPubkey: agentPubkey,
                 content: newContent,
-                timestamp: Date(timeIntervalSince1970: TimeInterval(event.createdAt))
+                timestamp: Date(timeIntervalSince1970: TimeInterval(event.createdAt)),
+                event: event
             )
         }
         
@@ -182,6 +220,7 @@ struct CallView: View {
         // Set current speaking agent
         await MainActor.run {
             currentSpeakingAgent = agentPubkey
+            lastSpeakingAgent = agentPubkey
         }
         
         // Use TTS to speak the content
@@ -205,6 +244,159 @@ struct CallView: View {
         isCallActive = false
         audioManager.stopTTS()
         dismiss()
+    }
+    
+    private func getLastVisibleMessage() -> NDKEvent {
+        // Get the last agent response event, or fall back to the conversation event
+        if let lastAgent = lastSpeakingAgent,
+           let lastResponse = agentResponses[lastAgent] {
+            return lastResponse.event
+        }
+        return conversation.event
+    }
+    
+    private func getSelectedAgents() -> Set<String> {
+        var agents = Set<String>()
+        if let lastAgent = lastSpeakingAgent {
+            agents.insert(lastAgent)
+        }
+        return agents
+    }
+    
+    private func toggleRecording() {
+        if isRecording {
+            stopRecording()
+        } else {
+            startRecording()
+        }
+    }
+    
+    private func startRecording() {
+        Task {
+            // Request permissions if needed
+            await audioManager.requestPermissions()
+            
+            guard audioManager.microphonePermissionGranted && audioManager.speechPermissionGranted else {
+                return
+            }
+            
+            recordingStartTime = Date()
+            currentTranscript = ""
+            waveformAmplitudes = []
+            
+            await audioManager.startRecordingWithFile { transcript, url, amplitude in
+                if !transcript.isEmpty {
+                    currentTranscript = transcript
+                }
+                if let url = url {
+                    audioURL = url
+                }
+                if let amplitude = amplitude {
+                    waveformAmplitudes.append(amplitude)
+                    // Update current amplitude for visual feedback
+                    currentAmplitude = amplitude
+                }
+            }
+            
+            isRecording = true
+        }
+    }
+    
+    private func stopRecording() {
+        audioManager.stopRecording()
+        isRecording = false
+        
+        // Process and publish the recording
+        if let audioURL = audioURL,
+           !currentTranscript.isEmpty,
+           let recordingStartTime = recordingStartTime {
+            
+            let duration = Date().timeIntervalSince(recordingStartTime)
+            
+            Task {
+                await publishAudioReply(
+                    audioURL: audioURL,
+                    transcript: currentTranscript,
+                    duration: duration,
+                    waveformAmplitudes: waveformAmplitudes
+                )
+            }
+        }
+        
+        // Reset recording state
+        audioURL = nil
+        currentTranscript = ""
+        recordingStartTime = nil
+        waveformAmplitudes = []
+        currentAmplitude = 0.0
+    }
+    
+    private func publishAudioReply(
+        audioURL: URL,
+        transcript: String,
+        duration: TimeInterval,
+        waveformAmplitudes: [Float]
+    ) async {
+        do {
+            // Create reply with transcript as content
+            _ = try await nostrManager.replyToConversation(
+                conversation,
+                content: transcript,
+                mentionedAgentPubkeys: Array(getSelectedAgents()),
+                lastVisibleMessage: getLastVisibleMessage()
+            )
+            
+            // Read audio data
+            let audioData = try Data(contentsOf: audioURL)
+            
+            // Upload to Blossom
+            let blossomClient = BlossomClient()
+            let uploadResult = try await blossomClient.uploadWithAuth(
+                data: audioData,
+                mimeType: "audio/m4a",
+                to: "https://blossom.primal.net",
+                signer: nostrManager.ndk.signer!,
+                ndk: nostrManager.ndk
+            )
+            
+            // Create waveform string
+            let waveformString = waveformAmplitudes
+                .map { String(format: "%.2f", $0) }
+                .joined(separator: " ")
+            
+            // Create audio event per NIP-94
+            var builder = NDKEventBuilder(ndk: nostrManager.ndk)
+                .content(transcript)
+                .kind(1063)
+                .tag(["url", uploadResult.url])
+                .tag(["m", "audio/m4a"])
+                .tag(["x", calculateSHA256(of: audioData)])
+                .tag(["size", String(audioData.count)])
+                .tag(["e", conversation.id])
+                .tag(["a", project.addressableId])
+            
+            if !waveformString.isEmpty {
+                builder = builder
+                    .tag(["waveform", waveformString])
+                    .tag(["duration", String(Int(duration))])
+            }
+            
+            // Add agent mentions
+            for agentPubkey in getSelectedAgents() {
+                builder = builder.tag(["p", agentPubkey])
+            }
+            
+            let audioEvent = try await builder.build()
+            _ = try await nostrManager.ndk.publish(audioEvent)
+            
+        } catch {
+            print("Failed to publish audio reply: \(error)")
+        }
+    }
+    
+    private func calculateSHA256(of data: Data) -> String {
+        let digest = SHA256.hash(data: data)
+        return digest.compactMap { String(format: "%02x", $0) }.joined()
     }
 }
 
@@ -329,5 +521,66 @@ struct AgentAvatarView: View {
                 .font(.system(size: displaySize * 0.3, weight: .medium, design: .monospaced))
                 .foregroundColor(.white.opacity(0.7))
         }
+    }
+}
+
+struct VoiceReactiveMicButton: View {
+    let isRecording: Bool
+    let currentAmplitude: Float
+    let action: () -> Void
+    
+    var body: some View {
+        Button(action: action) {
+            ZStack {
+                // Voice-reactive glow when recording
+                if isRecording {
+                    VoiceGlow(amplitude: currentAmplitude)
+                }
+                
+                Circle()
+                    .fill(isRecording ? Color.red : Color.white.opacity(0.2))
+                    .frame(width: 60, height: 60)
+                    .scaleEffect(isRecording ? 1.0 + CGFloat(currentAmplitude) * 0.1 : 1.0)
+                    .animation(.spring(response: 0.2, dampingFraction: 0.6), value: currentAmplitude)
+                
+                Image(systemName: isRecording ? "stop.fill" : "mic.fill")
+                    .font(.system(size: 24, weight: .semibold))
+                    .foregroundColor(.white)
+                    .scaleEffect(isRecording ? 1.0 + CGFloat(currentAmplitude) * 0.05 : 1.0)
+                    .animation(.spring(response: 0.2, dampingFraction: 0.6), value: currentAmplitude)
+            }
+        }
+        .shadow(color: isRecording ? Color.red.opacity(0.4) : Color.white.opacity(0.2), radius: 8, x: 0, y: 4)
+    }
+}
+
+struct VoiceGlow: View {
+    let amplitude: Float
+    
+    private var glowSize: CGFloat {
+        80 + (CGFloat(amplitude) * 60)
+    }
+    
+    private var glowRadius: CGFloat {
+        40 + (CGFloat(amplitude) * 40)
+    }
+    
+    var body: some View {
+        Circle()
+            .fill(
+                RadialGradient(
+                    gradient: Gradient(colors: [
+                        Color.red.opacity(0.6),
+                        Color.red.opacity(0.3),
+                        Color.red.opacity(0.1)
+                    ]),
+                    center: .center,
+                    startRadius: 30,
+                    endRadius: glowRadius
+                )
+            )
+            .frame(width: glowSize, height: glowSize)
+            .blur(radius: 5)
+            .animation(.easeOut(duration: 0.1), value: amplitude)
     }
 }
