@@ -183,7 +183,7 @@ struct TaskCardView: View {
             tags: ["e": [task.id]]
         )
         
-        let statusDataSource = nostrManager.ndk.observe(
+        let statusDataSource = nostrManager.ndk.subscribe(
             filter: filter,
             cachePolicy: .cacheWithNetwork
         )

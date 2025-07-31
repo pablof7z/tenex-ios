@@ -233,7 +233,7 @@ class NostrManager {
                 kinds: [TENEXEventKind.project]
             )
             
-            let projectSource = ndk.observe(
+            let projectSource = ndk.subscribe(
                 filter: projectFilter,
                 maxAge: 0,
                 cachePolicy: .cacheWithNetwork
@@ -275,7 +275,7 @@ class NostrManager {
         )
         
         // Stream status events as they arrive
-        let dataSource = ndk.observe(
+        let dataSource = ndk.subscribe(
             filter: statusFilter,
             cachePolicy: .networkOnly
         )
@@ -315,7 +315,7 @@ class NostrManager {
             kinds: [TENEXEventKind.chat]
         )
         
-        let dataSource = ndk.observe(
+        let dataSource = ndk.subscribe(
             filter: filter,
             maxAge: 600, // Use cache if less than 10 minutes old
             cachePolicy: .cacheWithNetwork
@@ -342,7 +342,7 @@ class NostrManager {
             tags: ["a": Set([projectId])]
         )
         
-        let dataSource = ndk.observe(
+        let dataSource = ndk.subscribe(
             filter: filter,
             maxAge: 300,
             cachePolicy: .cacheWithNetwork
@@ -437,7 +437,7 @@ class NostrManager {
             kinds: [TENEXEventKind.llmConfigChange]
         )
         
-        let dataSource = ndk.observe(
+        let dataSource = ndk.subscribe(
             filter: configFilter,
             maxAge: 0, // Always get fresh config updates
             cachePolicy: .cacheWithNetwork
@@ -615,7 +615,7 @@ class NostrManager {
 
         print("streamAgentLessons for \(agentPubkey) (kind: \(TENEXEventKind.agentLesson))")
         
-        let dataSource = ndk.observe(
+        let dataSource = ndk.subscribe(
             filter: filter,
             maxAge: 0,
             cachePolicy: .networkOnly

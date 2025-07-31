@@ -82,7 +82,7 @@ struct ConversationListView: View {
             tags: ["a": [project.addressableId]]
         )
         
-        let conversationSource = nostrManager.ndk.observe(
+        let conversationSource = nostrManager.ndk.subscribe(
             filter: filter,
             maxAge: 300,
             cachePolicy: .cacheWithNetwork
@@ -112,7 +112,7 @@ struct ConversationListView: View {
             tags: ["e": [conversationId]]
         )
         
-        let statusSource = nostrManager.ndk.observe(
+        let statusSource = nostrManager.ndk.subscribe(
             filter: filter,
             maxAge: 0,
             cachePolicy: .cacheWithNetwork

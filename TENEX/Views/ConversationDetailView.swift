@@ -287,7 +287,7 @@ struct ConversationDetailView: View {
             tags: ["E": [conversation.id]]
         )
         
-        let replyDataSource = nostrManager.ndk.observe(
+        let replyDataSource = nostrManager.ndk.subscribe(
             filter: filter,
             cachePolicy: .cacheWithNetwork
         )
@@ -307,7 +307,7 @@ struct ConversationDetailView: View {
             tags: ["e": [conversation.id]]
         )
         
-        let typingDataSource = nostrManager.ndk.observe(
+        let typingDataSource = nostrManager.ndk.subscribe(
             filter: filter,
             cachePolicy: .networkOnly // Ephemeral events, don't cache
         )
@@ -494,7 +494,7 @@ extension ConversationDetailView {
             tags: ["e": [conversation.id]]
         )
         
-        let taskDataSource = nostrManager.ndk.observe(
+        let taskDataSource = nostrManager.ndk.subscribe(
             filter: filter,
             cachePolicy: .cacheWithNetwork
         )
@@ -521,7 +521,7 @@ extension ConversationDetailView {
             tags: ["e": [conversation.id]]
         )
         
-        let audioDataSource = nostrManager.ndk.observe(
+        let audioDataSource = nostrManager.ndk.subscribe(
             filter: filter,
             cachePolicy: .cacheWithNetwork
         )
@@ -760,7 +760,7 @@ struct TaskDetailView: View {
             tags: ["e": [task.id]]
         )
         
-        let updateDataSource = nostrManager.ndk.observe(
+        let updateDataSource = nostrManager.ndk.subscribe(
             filter: filter,
             cachePolicy: .cacheWithNetwork
         )

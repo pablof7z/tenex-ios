@@ -52,7 +52,7 @@ struct ArticleListView: View {
         
         // Use NDK directly to stream articles
         let ndk = nostrManager.ndk
-        let articlesDataSource = ndk.observe(
+        let articlesDataSource = ndk.subscribe(
             filter: filter,
             maxAge: 300, // Use 5 minute cache for articles
             cachePolicy: .cacheWithNetwork

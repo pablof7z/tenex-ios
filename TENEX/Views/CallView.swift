@@ -139,7 +139,7 @@ struct CallView: View {
             tags: ["e": [conversationId]]
         )
         
-        let responseSource = nostrManager.ndk.observe(
+        let responseSource = nostrManager.ndk.subscribe(
             filter: filter,
             cachePolicy: .networkOnly // Don't cache streaming responses
         )

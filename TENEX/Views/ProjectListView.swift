@@ -96,7 +96,7 @@ struct ProjectListView: View {
             tags: ["a": [project.addressableId]]
         )
         
-        let conversationSource = nostrManager.ndk.observe(
+        let conversationSource = nostrManager.ndk.subscribe(
             filter: conversationFilter,
             maxAge: 300,
             cachePolicy: .cacheWithNetwork
@@ -134,7 +134,7 @@ struct ProjectListView: View {
             tags: ["a": [project.addressableId]]
         )
         
-        let lessonSource = nostrManager.ndk.observe(
+        let lessonSource = nostrManager.ndk.subscribe(
             filter: lessonFilter,
             maxAge: 300,
             cachePolicy: .cacheWithNetwork

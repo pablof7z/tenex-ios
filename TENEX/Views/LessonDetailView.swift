@@ -160,7 +160,7 @@ struct LessonDetailView: View {
                 tags: ["E": [lesson.id]]
             )
             
-            let commentDataSource = nostrManager.ndk.observe(
+            let commentDataSource = nostrManager.ndk.subscribe(
                 filter: filter,
                 cachePolicy: .cacheWithNetwork
             )

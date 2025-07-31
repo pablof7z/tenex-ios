@@ -102,7 +102,7 @@ struct TaskStatusUpdateView: View {
         .padding(.vertical, 8)
         .task {
             // Use NDKSwift's profile manager for intelligent caching and streaming
-            for await profile in await nostrManager.ndk.profileManager.observe(for: update.pubkey, maxAge: 3600) {
+            for await profile in await nostrManager.ndk.profileManager.subscribe(for: update.pubkey, maxAge: 3600) {
                 await MainActor.run {
                     authorName = profile?.name ?? profile?.displayName ?? "Agent"
                 }
