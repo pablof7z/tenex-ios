@@ -102,8 +102,8 @@ private struct WaveformBar: View {
             // Active recording - red gradient
             return Color.red.opacity(0.8 - progress * 0.3)
         } else {
-            // Inactive - gray
-            return Color.primary.opacity(0.3 - progress * 0.1)
+            // Inactive - subtle white/gray
+            return Color.white.opacity(0.4 - progress * 0.2)
         }
     }
     

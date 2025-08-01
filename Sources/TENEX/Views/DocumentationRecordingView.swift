@@ -12,6 +12,7 @@ struct DocumentationRecordingView: View {
     @StateObject private var audioManager = AudioManager.shared
     
     @State private var isRecording = false
+    @State private var isPaused = false
     @State private var transcribedText = ""
     @State private var recordingDuration: TimeInterval = 0
     @State private var timer: Timer?
@@ -40,87 +41,108 @@ struct DocumentationRecordingView: View {
                 )
                 .edgesIgnoringSafeArea(.all)
                 
-                VStack(spacing: 32) {
-                    // Title and instructions
-                    VStack(spacing: 12) {
-                        Text("Create Documentation")
-                            .font(.largeTitle)
-                            .fontWeight(.bold)
-                            .foregroundColor(.white)
-                        
-                        Text("Record your voice to create a document")
-                            .font(.body)
-                            .foregroundColor(.white.opacity(0.7))
-                            .multilineTextAlignment(.center)
+                // Background waveform
+                if hasStartedRecording {
+                    VStack {
+                        Spacer()
+                        WaveformView(amplitudes: waveformAmplitudes, isRecording: isRecording && !isPaused, isPaused: isPaused)
+                            .frame(height: 120)
+                            .opacity(0.3)
+                            .padding(.horizontal, 40)
+                        Spacer()
                     }
-                    .padding(.top, 40)
+                }
+                
+                VStack(spacing: 0) {
+                    // Subtle recording status at top
+                    if hasStartedRecording {
+                        HStack {
+                            Circle()
+                                .fill(isRecording && !isPaused ? Color.red : (isPaused ? Color.orange : Color.gray))
+                                .frame(width: 8, height: 8)
+                                .opacity(isRecording && !isPaused ? 1.0 : 0.6)
+                            
+                            Text(isRecording && !isPaused ? "Recording • \(formattedDuration)" : (isPaused ? "Paused • \(formattedDuration)" : "Stopped • \(formattedDuration)"))
+                                .font(.system(size: 14, weight: .medium, design: .monospaced))
+                                .foregroundColor(.white.opacity(0.8))
+                        }
+                        .padding(.top, 60)
+                    }
                     
                     Spacer()
                     
-                    // Recording visualization
-                    if isRecording || hasStartedRecording {
-                        VStack(spacing: 24) {
-                            // Waveform
-                            WaveformView(amplitudes: waveformAmplitudes, isRecording: isRecording)
-                                .frame(height: 100)
-                                .padding(.horizontal)
-                            
-                            // Duration
-                            Text(formattedDuration)
-                                .font(.system(size: 48, weight: .light, design: .monospaced))
+                    // Centered transcription
+                    if !transcribedText.isEmpty {
+                        ScrollView {
+                            Text(transcribedText)
+                                .font(.system(size: 18, weight: .regular))
+                                .lineLimit(nil)
                                 .foregroundColor(.white)
-                            
-                            // Transcription preview
-                            if !transcribedText.isEmpty {
-                                ScrollView {
-                                    Text(transcribedText)
-                                        .font(.body)
-                                        .foregroundColor(.white.opacity(0.9))
-                                        .padding()
-                                        .background(Color.white.opacity(0.1))
-                                        .cornerRadius(12)
-                                }
-                                .frame(maxHeight: 200)
-                                .padding(.horizontal)
-                            }
+                                .multilineTextAlignment(.center)
+                                .padding(.horizontal, 32)
                         }
+                        .frame(maxHeight: 300)
+                        .animation(.easeInOut(duration: 0.3), value: transcribedText)
+                    } else if hasStartedRecording {
+                        Text("Listening...")
+                            .font(.system(size: 18, weight: .regular))
+                            .foregroundColor(.white.opacity(0.6))
+                            .multilineTextAlignment(.center)
                     }
                     
                     Spacer()
                     
                     // Control buttons
-                    HStack(spacing: 40) {
+                    HStack(spacing: 50) {
                         // Cancel button
                         Button(action: {
                             stopRecording()
                             dismiss()
                         }) {
-                            Image(systemName: "xmark.circle.fill")
-                                .font(.system(size: 60))
-                                .foregroundColor(.white.opacity(0.3))
+                            ZStack {
+                                Circle()
+                                    .fill(Color.white.opacity(0.1))
+                                    .frame(width: 60, height: 60)
+                                Image(systemName: "xmark")
+                                    .font(.system(size: 24, weight: .medium))
+                                    .foregroundColor(.white.opacity(0.7))
+                            }
                         }
                         
-                        // Record/Stop button
+                        // Record/Pause button
                         Button(action: {
-                            if isRecording {
-                                stopRecording()
-                            } else {
+                            if !hasStartedRecording {
                                 startRecording()
+                            } else if isRecording {
+                                pauseRecording()
+                            } else {
+                                resumeRecording()
                             }
                         }) {
                             ZStack {
                                 Circle()
-                                    .fill(isRecording ? Color.red : Color.white)
+                                    .fill(isRecording && !isPaused ? Color.red.opacity(0.9) : (isPaused ? Color.orange.opacity(0.9) : Color.red.opacity(0.9)))
                                     .frame(width: 80, height: 80)
+                                    .shadow(color: (isRecording && !isPaused ? Color.red : (isPaused ? Color.orange : Color.red)).opacity(0.4), radius: 8, x: 0, y: 0)
                                 
-                                if isRecording {
-                                    RoundedRectangle(cornerRadius: 8)
-                                        .fill(Color.white)
-                                        .frame(width: 28, height: 28)
-                                } else {
+                                if !hasStartedRecording {
                                     Circle()
-                                        .fill(Color.red)
-                                        .frame(width: 70, height: 70)
+                                        .fill(Color.white)
+                                        .frame(width: 24, height: 24)
+                                } else if isRecording && !isPaused {
+                                    HStack(spacing: 4) {
+                                        RoundedRectangle(cornerRadius: 2)
+                                            .fill(Color.white)
+                                            .frame(width: 8, height: 24)
+                                        RoundedRectangle(cornerRadius: 2)
+                                            .fill(Color.white)
+                                            .frame(width: 8, height: 24)
+                                    }
+                                } else {
+                                    Image(systemName: "play.fill")
+                                        .font(.system(size: 20, weight: .bold))
+                                        .foregroundColor(.white)
+                                        .offset(x: 2)
                                 }
                             }
                         }
@@ -132,11 +154,16 @@ struct DocumentationRecordingView: View {
                                 sendDocumentation()
                             }
                         }) {
-                            Image(systemName: "arrow.up.circle.fill")
-                                .font(.system(size: 60))
-                                .foregroundColor(hasStartedRecording && !isRecording && !isProcessing ? .blue : .white.opacity(0.3))
+                            ZStack {
+                                Circle()
+                                    .fill(hasStartedRecording && !isRecording && !isPaused && !isProcessing ? Color.blue.opacity(0.9) : Color.white.opacity(0.1))
+                                    .frame(width: 60, height: 60)
+                                Image(systemName: "arrow.up")
+                                    .font(.system(size: 24, weight: .medium))
+                                    .foregroundColor(hasStartedRecording && !isRecording && !isPaused && !isProcessing ? .white : .white.opacity(0.4))
+                            }
                         }
-                        .disabled(!hasStartedRecording || isRecording || isProcessing || recordedAudioURL == nil)
+                        .disabled(!hasStartedRecording || (isRecording && !isPaused) || isProcessing || recordedAudioURL == nil)
                     }
                     .padding(.bottom, 50)
                 }
@@ -154,6 +181,13 @@ struct DocumentationRecordingView: View {
                 }
             }
             .navigationBarHidden(true)
+            .onAppear {
+                // Start recording immediately when view appears
+                Task {
+                    try? await Task.sleep(nanoseconds: 500_000_000) // Small delay to ensure view is ready
+                    startRecording()
+                }
+            }
         }
     }
     
@@ -187,11 +221,51 @@ struct DocumentationRecordingView: View {
         }
     }
     
+    private func pauseRecording() {
+        timer?.invalidate()
+        timer = nil
+        audioManager.stopRecording()
+        isRecording = false
+        isPaused = true
+    }
+    
+    private func resumeRecording() {
+        Task {
+            await audioManager.startRecordingWithFile { transcription, audioURL, amplitude in
+                if !transcription.isEmpty {
+                    // Append new transcription to existing
+                    if !self.transcribedText.isEmpty {
+                        self.transcribedText += " " + transcription
+                    } else {
+                        self.transcribedText = transcription
+                    }
+                }
+                self.recordedAudioURL = audioURL
+                
+                if let amp = amplitude {
+                    self.waveformAmplitudes.append(amp)
+                    if self.waveformAmplitudes.count > 50 {
+                        self.waveformAmplitudes.removeFirst()
+                    }
+                }
+            }
+            
+            isRecording = true
+            isPaused = false
+            
+            // Resume timer for duration
+            timer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { _ in
+                recordingDuration += 0.1
+            }
+        }
+    }
+    
     private func stopRecording() {
         timer?.invalidate()
         timer = nil
         audioManager.stopRecording()
         isRecording = false
+        isPaused = false
     }
     
     private func sendDocumentation() {
