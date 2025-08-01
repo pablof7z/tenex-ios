@@ -207,18 +207,7 @@ struct DocumentationRecordingView: View {
             
             await audioManager.startRecordingWithFile { transcription, audioURL, amplitude in
                 if !transcription.isEmpty {
-                    // For resume functionality, we should append transcription properly
-                    if self.isPaused {
-                        // When resuming, append new transcription to existing
-                        if !self.transcribedText.isEmpty {
-                            self.transcribedText += " " + transcription
-                        } else {
-                            self.transcribedText = transcription
-                        }
-                    } else {
-                        // Fresh start or ongoing recording
-                        self.transcribedText = transcription
-                    }
+                    self.transcribedText = transcription
                 }
                 self.recordedAudioURL = audioURL
                 
