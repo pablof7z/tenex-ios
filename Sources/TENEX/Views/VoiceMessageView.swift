@@ -1,6 +1,7 @@
 import SwiftUI
 import AVFoundation
 import NDKSwift
+import NDKSwiftUI
 
 struct VoiceMessageView: View {
     let audioEvent: NDKEvent
@@ -83,14 +84,7 @@ struct VoiceMessageView: View {
         HStack(alignment: .top, spacing: 8) {
             // Show avatar for all non-current-user messages
             if !isFromCurrentUser {
-                Circle()
-                    .fill(Color.gray.opacity(0.3))
-                    .frame(width: 32, height: 32)
-                    .overlay(
-                        Text(String(audioEvent.pubkey.prefix(2)).uppercased())
-                            .font(.system(size: 12, weight: .medium))
-                            .foregroundColor(.gray)
-                    )
+                NDKUIProfilePicture(pubkey: audioEvent.pubkey, size: 32)
             }
             
             if isFromCurrentUser {

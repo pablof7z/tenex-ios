@@ -1,5 +1,6 @@
 import SwiftUI
 import NDKSwift
+import NDKSwiftUI
 
 struct TaskStatusUpdateView: View {
     let update: NDKEvent
@@ -61,7 +62,7 @@ struct TaskStatusUpdateView: View {
             VStack(alignment: .leading, spacing: 4) {
                 // Author and phase
                 HStack(spacing: 4) {
-                    Text("Agent")
+                    NDKUIDisplayName(pubkey: update.pubkey, fallbackStyle: .custom("Agent"))
                         .font(.system(size: 12, weight: .medium))
                         .foregroundColor(.primary)
                     

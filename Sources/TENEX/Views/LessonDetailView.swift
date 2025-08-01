@@ -1,5 +1,6 @@
 import SwiftUI
 import NDKSwift
+import NDKSwiftUI
 
 struct LessonDetailView: View {
     let lesson: NDKLesson
@@ -188,7 +189,7 @@ struct CommentView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
-                Text(String(comment.pubkey.prefix(8)) + "...")
+                NDKUIDisplayName(pubkey: comment.pubkey, fallbackStyle: .npub)
                     .font(.subheadline)
                     .fontWeight(.semibold)
                 

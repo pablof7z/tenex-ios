@@ -9,23 +9,26 @@ targets:
     type: application
     platform: iOS
     sources:
-      - path: "."
+      - path: Sources/TENEX
         includes:
           - "**/*.swift"
         excludes:
           - ".build/**"
           - "project.yml"
-      - path: Resources/Assets.xcassets
+      - path: Sources/TENEX/Resources/Assets.xcassets
         buildPhase: resources
-      - path: Resources/LaunchScreen.storyboard
+      - path: Sources/TENEX/Resources/LaunchScreen.storyboard
         buildPhase: resources
-      - path: Info.plist
+      - path: Sources/TENEX/Info.plist
         buildPhase: none
     dependencies:
       - package: NDKSwift
+        product: NDKSwift
+      - package: NDKSwift
+        product: NDKSwiftUI
     settings:
       base:
-        INFOPLIST_FILE: Info.plist
+        INFOPLIST_FILE: Sources/TENEX/Info.plist
         PRODUCT_BUNDLE_IDENTIFIER: com.tenex.app
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         
