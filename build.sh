@@ -23,9 +23,7 @@ if ! command -v xcodegen &> /dev/null; then
 fi
 
 # Generate Xcode project
-cd TENEX
 xcodegen generate
-cd ..
 
 echo -e "${GREEN}✅ Xcode project regenerated${NC}"
 
@@ -39,7 +37,7 @@ SCHEME="${SCHEME:-$APP_NAME}"
 
 # Build with xcbeautify for cleaner output
 set -o pipefail && xcodebuild \
-    -project "${APP_NAME}/${APP_NAME}.xcodeproj" \
+    -project "${APP_NAME}.xcodeproj" \
     -scheme "$SCHEME" \
     -destination "$DESTINATION" \
     -configuration "$CONFIGURATION" \
