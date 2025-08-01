@@ -164,6 +164,19 @@ class AudioManager: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, AVA
             let inputNode = audioEngine.inputNode
             let recordingFormat = inputNode.outputFormat(forBus: 0)
             
+            // Validate the format before installing tap
+            guard recordingFormat.sampleRate > 0 && recordingFormat.channelCount > 0 else {
+                error = "Invalid audio format from input node: sampleRate=\(recordingFormat.sampleRate), channels=\(recordingFormat.channelCount)"
+                return
+            }
+            
+            // Remove any existing tap before installing new one (if it exists)
+            do {
+                inputNode.removeTap(onBus: 0)
+            } catch {
+                // No existing tap to remove, which is fine
+            }
+            
             inputNode.installTap(onBus: 0, bufferSize: 1024, format: recordingFormat) { buffer, _ in
                 self.recognitionRequest?.append(buffer)
             }
@@ -196,14 +209,20 @@ class AudioManager: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, AVA
         
         let settings = [
             AVFormatIDKey: Int(kAudioFormatMPEG4AAC),
-            AVSampleRateKey: 12000,
+            AVSampleRateKey: 44100,
             AVNumberOfChannelsKey: 1,
             AVEncoderAudioQualityKey: AVAudioQuality.high.rawValue
         ]
         
         do {
-            // Configure audio session
+            // Configure audio session first
             try await configureAudioSession(for: .playAndRecord)
+            
+            // Stop any existing audio engine to avoid conflicts
+            if audioEngine.isRunning {
+                audioEngine.stop()
+                audioEngine.inputNode.removeTap(onBus: 0)
+            }
             
             // Create audio recorder
             audioRecorder = try AVAudioRecorder(url: audioFilename, settings: settings)
@@ -223,6 +242,19 @@ class AudioManager: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, AVA
             let inputNode = audioEngine.inputNode
             let recordingFormat = inputNode.outputFormat(forBus: 0)
             
+            // Validate the format before installing tap
+            guard recordingFormat.sampleRate > 0 && recordingFormat.channelCount > 0 else {
+                error = "Invalid audio format from input node: sampleRate=\(recordingFormat.sampleRate), channels=\(recordingFormat.channelCount)"
+                return
+            }
+            
+            // Remove any existing tap before installing new one (if it exists)
+            do {
+                inputNode.removeTap(onBus: 0)
+            } catch {
+                // No existing tap to remove, which is fine
+            }
+            
             inputNode.installTap(onBus: 0, bufferSize: 1024, format: recordingFormat) { buffer, _ in
                 self.recognitionRequest?.append(buffer)
                 
@@ -230,7 +262,7 @@ class AudioManager: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, AVA
                 let channelData = buffer.floatChannelData?[0]
                 let channelDataLength = Int(buffer.frameLength)
                 
-                if let channelData = channelData {
+                if let channelData = channelData, channelDataLength > 0 {
                     var sum: Float = 0
                     for i in 0..<channelDataLength {
                         sum += abs(channelData[i])
@@ -736,11 +768,14 @@ class AudioManager: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, AVA
         
         do {
             if category == .playAndRecord {
-                // Enhanced configuration for better recording quality
-                try audioSession.setCategory(.playAndRecord, mode: .measurement, options: [.defaultToSpeaker, .allowBluetooth, .interruptSpokenAudioAndMixWithOthers])
+                // Configure for recording with speech recognition
+                try audioSession.setCategory(.playAndRecord, mode: .measurement, options: [.defaultToSpeaker, .allowBluetooth])
                 
-                // Set preferred sample rate for better quality
+                // Set preferred sample rate to match our recording settings
                 try audioSession.setPreferredSampleRate(44100)
+                
+                // Set preferred IO buffer duration for stable performance
+                try audioSession.setPreferredIOBufferDuration(0.023) // ~1024 samples at 44100 Hz
                 
                 // Enable voice processing for noise reduction
                 if #available(iOS 15.0, *) {

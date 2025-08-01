@@ -8,7 +8,6 @@ struct AgentSelectorView: View {
     
     @State private var availableAgents: [NDKAgent] = []
     @State private var searchText = ""
-    @State private var isLoading = true
     
     var filteredAgents: [NDKAgent] {
         if searchText.isEmpty {
@@ -26,14 +25,11 @@ struct AgentSelectorView: View {
     var body: some View {
         NavigationStack {
             Group {
-                if isLoading {
-                    ProgressView("Loading agents...")
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                } else if availableAgents.isEmpty {
+                if filteredAgents.isEmpty {
                     ContentUnavailableView(
                         "No Agents Available",
                         systemImage: "person.crop.circle",
-                        description: Text("No AI agents have been published yet")
+                        description: Text("AI agents will appear here as they're discovered")
                     )
                 } else {
                     List {
@@ -80,8 +76,6 @@ struct AgentSelectorView: View {
     }
     
     private func loadAgents() async {
-        isLoading = true
-        
         let filter = NDKFilter(
             kinds: [NDKAgent.kind],
             limit: 100
@@ -92,28 +86,18 @@ struct AgentSelectorView: View {
             cachePolicy: .cacheWithNetwork
         )
         
-        var agents: [NDKAgent] = []
-        
+        // Stream agents as they arrive - update UI immediately for each agent
         for await event in source.events {
             let agent = NDKAgent(event: event)
             
-            // Avoid duplicates
-            if !agents.contains(where: { $0.id == agent.id }) {
-                agents.append(agent)
-            }
-            
-            // Update UI periodically
-            if agents.count % 10 == 0 {
-                await MainActor.run {
-                    availableAgents = agents.sorted { $0.name < $1.name }
+            await MainActor.run {
+                // Avoid duplicates
+                if !availableAgents.contains(where: { $0.id == agent.id }) {
+                    availableAgents.append(agent)
+                    // Keep sorted for better UX
+                    availableAgents.sort { $0.name < $1.name }
                 }
             }
-        }
-        
-        // Final update
-        await MainActor.run {
-            availableAgents = agents.sorted { $0.name < $1.name }
-            isLoading = false
         }
     }
 }
