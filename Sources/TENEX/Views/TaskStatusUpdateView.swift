@@ -3,7 +3,6 @@ import NDKSwift
 
 struct TaskStatusUpdateView: View {
     let update: NDKEvent
-    @State private var authorName: String = ""
     @Environment(NostrManager.self) var nostrManager
     
     var phase: String? {
@@ -62,7 +61,7 @@ struct TaskStatusUpdateView: View {
             VStack(alignment: .leading, spacing: 4) {
                 // Author and phase
                 HStack(spacing: 4) {
-                    Text(authorName.isEmpty ? "Agent" : authorName)
+                    Text("Agent")
                         .font(.system(size: 12, weight: .medium))
                         .foregroundColor(.primary)
                     
@@ -100,14 +99,5 @@ struct TaskStatusUpdateView: View {
             }
         }
         .padding(.vertical, 8)
-        .task {
-            // Use NDKSwift's profile manager for intelligent caching and streaming
-            for await profile in await nostrManager.ndk.profileManager.subscribe(for: update.pubkey, maxAge: 3600) {
-                await MainActor.run {
-                    authorName = profile?.name ?? profile?.displayName ?? "Agent"
-                }
-                break // We only need the current value
-            }
-        }
     }
 }

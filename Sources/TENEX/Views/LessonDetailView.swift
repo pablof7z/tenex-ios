@@ -184,27 +184,11 @@ struct CommentView: View {
     let comment: NDKEvent
     @Environment(NostrManager.self) var nostrManager
     
-    var authorName: String {
-        // Check if it's the current user
-        if comment.pubkey == nostrManager.currentUserPubkey {
-            return "You"
-        }
-        
-        // Check if it's a known agent
-        if let agent = nostrManager.projectStatuses.values
-            .flatMap({ $0.availableAgents })
-            .first(where: { $0.id == comment.pubkey }) {
-            return agent.name
-        }
-        
-        // Return shortened pubkey
-        return String(comment.pubkey.prefix(8)) + "..."
-    }
     
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
-                Text(authorName)
+                Text(String(comment.pubkey.prefix(8)) + "...")
                     .font(.subheadline)
                     .fontWeight(.semibold)
                 

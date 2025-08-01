@@ -27,6 +27,8 @@ class AudioManager: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, AVA
     private let synthesizer = AVSpeechSynthesizer()
     private var audioRecorder: AVAudioRecorder?
     private var speechCompletionHandler: (() -> Void)?
+    private var recordingCallback: ((String, URL?, Float?) -> Void)?
+    private var currentAudioFilename: URL?
     
     // Audio playback
     var audioPlayer: AVAudioPlayer?
@@ -205,7 +207,11 @@ class AudioManager: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, AVA
             return
         }
         
+        // Store the callback for use in pause/resume
+        recordingCallback = onUpdate
+        
         let audioFilename = getDocumentsDirectory().appendingPathComponent("recording-\(Date().timeIntervalSince1970).m4a")
+        currentAudioFilename = audioFilename
         
         let settings = [
             AVFormatIDKey: Int(kAudioFormatMPEG4AAC),
@@ -298,11 +304,17 @@ class AudioManager: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, AVA
     }
     
     func stopRecording() {
-        audioEngine.stop()
+        if audioEngine.isRunning {
+            audioEngine.stop()
+            audioEngine.inputNode.removeTap(onBus: 0)
+        }
         recognitionRequest?.endAudio()
         recognitionTask?.cancel()
-        audioEngine.inputNode.removeTap(onBus: 0)
         audioRecorder?.stop()
+        
+        // Clear stored callback and filename
+        recordingCallback = nil
+        currentAudioFilename = nil
         
         // Deactivate audio session
         do {
@@ -319,7 +331,9 @@ class AudioManager: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, AVA
         audioRecorder?.pause()
         
         // Remove the tap before pausing to avoid conflicts
-        audioEngine.inputNode.removeTap(onBus: 0)
+        if audioEngine.isRunning {
+            audioEngine.inputNode.removeTap(onBus: 0)
+        }
         
         // Pause the audio engine
         audioEngine.pause()
@@ -330,9 +344,16 @@ class AudioManager: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, AVA
         // Cancel the recognition task
         recognitionTask?.cancel()
         recognitionTask = nil
+        recognitionRequest = nil
     }
     
     func resumeRecording() {
+        guard let callback = recordingCallback,
+              let audioFilename = currentAudioFilename else {
+            print("Cannot resume recording: missing callback or filename")
+            return
+        }
+        
         // Resume the audio recorder
         audioRecorder?.record()
         
@@ -352,23 +373,39 @@ class AudioManager: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, AVA
         let inputNode = audioEngine.inputNode
         let recordingFormat = inputNode.outputFormat(forBus: 0)
         
-        inputNode.installTap(onBus: 0, bufferSize: 1024, format: recordingFormat) { [weak self] buffer, _ in
-            self?.recognitionRequest?.append(buffer)
+        inputNode.installTap(onBus: 0, bufferSize: 1024, format: recordingFormat) { buffer, _ in
+            self.recognitionRequest?.append(buffer)
+            
+            // Calculate amplitude for waveform
+            let channelData = buffer.floatChannelData?[0]
+            let channelDataLength = Int(buffer.frameLength)
+            
+            if let channelData = channelData, channelDataLength > 0 {
+                var sum: Float = 0
+                for i in 0..<channelDataLength {
+                    sum += abs(channelData[i])
+                }
+                let amplitude = sum / Float(channelDataLength)
+                
+                // Update metering and call callback
+                self.audioRecorder?.updateMeters()
+                let normalizedAmplitude = min(max(amplitude * 10, 0), 1) // Amplify and normalize
+                
+                DispatchQueue.main.async {
+                    callback("", audioFilename, normalizedAmplitude)
+                }
+            }
         }
         
         // Start a new recognition task
-        recognitionTask = speechRecognizer?.recognitionTask(with: recognitionRequest!) { [weak self] result, error in
-            guard let self = self else { return }
-            
+        recognitionTask = speechRecognizer?.recognitionTask(with: recognitionRequest!) { result, error in
             if let error = error {
                 print("Speech recognition error: \(error)")
             }
             
             if let result = result {
-                // Update the transcribed text with the new results
                 DispatchQueue.main.async {
-                    // We need to append to existing transcription or handle it appropriately
-                    // This depends on how the transcription callback is set up
+                    callback(result.bestTranscription.formattedString, audioFilename, nil)
                 }
             }
         }

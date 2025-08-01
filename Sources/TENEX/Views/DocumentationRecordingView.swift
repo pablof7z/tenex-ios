@@ -184,8 +184,16 @@ struct DocumentationRecordingView: View {
             .onAppear {
                 // Start recording immediately when view appears
                 Task {
-                    try? await Task.sleep(nanoseconds: 500_000_000) // Small delay to ensure view is ready
-                    startRecording()
+                    // Request permissions first
+                    await audioManager.requestPermissions()
+                    
+                    // Small delay to ensure view is ready
+                    try? await Task.sleep(nanoseconds: 500_000_000)
+                    
+                    // Start recording if permissions are granted
+                    if audioManager.microphonePermissionGranted && audioManager.speechPermissionGranted {
+                        startRecording()
+                    }
                 }
             }
         }
@@ -199,7 +207,18 @@ struct DocumentationRecordingView: View {
             
             await audioManager.startRecordingWithFile { transcription, audioURL, amplitude in
                 if !transcription.isEmpty {
-                    self.transcribedText = transcription
+                    // For resume functionality, we should append transcription properly
+                    if self.isPaused {
+                        // When resuming, append new transcription to existing
+                        if !self.transcribedText.isEmpty {
+                            self.transcribedText += " " + transcription
+                        } else {
+                            self.transcribedText = transcription
+                        }
+                    } else {
+                        // Fresh start or ongoing recording
+                        self.transcribedText = transcription
+                    }
                 }
                 self.recordedAudioURL = audioURL
                 
@@ -224,39 +243,19 @@ struct DocumentationRecordingView: View {
     private func pauseRecording() {
         timer?.invalidate()
         timer = nil
-        audioManager.stopRecording()
+        audioManager.pauseRecording()
         isRecording = false
         isPaused = true
     }
     
     private func resumeRecording() {
-        Task {
-            await audioManager.startRecordingWithFile { transcription, audioURL, amplitude in
-                if !transcription.isEmpty {
-                    // Append new transcription to existing
-                    if !self.transcribedText.isEmpty {
-                        self.transcribedText += " " + transcription
-                    } else {
-                        self.transcribedText = transcription
-                    }
-                }
-                self.recordedAudioURL = audioURL
-                
-                if let amp = amplitude {
-                    self.waveformAmplitudes.append(amp)
-                    if self.waveformAmplitudes.count > 50 {
-                        self.waveformAmplitudes.removeFirst()
-                    }
-                }
-            }
-            
-            isRecording = true
-            isPaused = false
-            
-            // Resume timer for duration
-            timer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { _ in
-                recordingDuration += 0.1
-            }
+        audioManager.resumeRecording()
+        isRecording = true
+        isPaused = false
+        
+        // Resume timer for duration
+        timer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { _ in
+            recordingDuration += 0.1
         }
     }
     

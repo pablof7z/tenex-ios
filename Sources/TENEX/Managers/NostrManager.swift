@@ -604,6 +604,15 @@ class NostrManager {
         projectLLMConfigs = [:]
         projectConversations = [:]
         
+        // Delete ALL sessions from keychain - this is critical!
+        Task {
+            if let authManager = authManager {
+                for session in authManager.availableSessions {
+                    try? await authManager.removeSession(session)
+                }
+            }
+        }
+        
         // Logout from auth manager
         authManager?.logout()
     }
