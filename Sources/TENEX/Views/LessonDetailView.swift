@@ -189,7 +189,7 @@ struct CommentView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
-                NDKUIDisplayName(pubkey: comment.pubkey, fallbackStyle: .npub)
+                NDKUIDisplayName(ndk: nostrManager.ndk, pubkey: comment.pubkey, fallbackStyle: .npub)
                     .font(.subheadline)
                     .fontWeight(.semibold)
                 

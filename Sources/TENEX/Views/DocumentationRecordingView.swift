@@ -121,9 +121,9 @@ struct DocumentationRecordingView: View {
                         }) {
                             ZStack {
                                 Circle()
-                                    .fill(isRecording && !isPaused ? Color.red.opacity(0.9) : (isPaused ? Color.orange.opacity(0.9) : Color.red.opacity(0.9)))
+                                    .fill(Color.red.opacity(0.9))
                                     .frame(width: 80, height: 80)
-                                    .shadow(color: (isRecording && !isPaused ? Color.red : (isPaused ? Color.orange : Color.red)).opacity(0.4), radius: 8, x: 0, y: 0)
+                                    .shadow(color: Color.red.opacity(0.4), radius: 8, x: 0, y: 0)
                                 
                                 if !hasStartedRecording {
                                     Circle()
@@ -139,10 +139,10 @@ struct DocumentationRecordingView: View {
                                             .frame(width: 8, height: 24)
                                     }
                                 } else {
-                                    Image(systemName: "play.fill")
-                                        .font(.system(size: 20, weight: .bold))
-                                        .foregroundColor(.white)
-                                        .offset(x: 2)
+                                    // When paused, show record icon (small white circle)
+                                    Circle()
+                                        .fill(Color.white)
+                                        .frame(width: 24, height: 24)
                                 }
                             }
                         }

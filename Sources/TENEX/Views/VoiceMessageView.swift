@@ -8,6 +8,7 @@ struct VoiceMessageView: View {
     let isFromCurrentUser: Bool
     let availableAgents: [NDKProjectStatus.AgentStatus]
     
+    @Environment(NostrManager.self) var nostrManager
     @EnvironmentObject var audioManager: AudioManager
     @State private var waveformAmplitudes: [Float] = []
     @State private var duration: TimeInterval = 0
@@ -84,7 +85,7 @@ struct VoiceMessageView: View {
         HStack(alignment: .top, spacing: 8) {
             // Show avatar for all non-current-user messages
             if !isFromCurrentUser {
-                NDKUIProfilePicture(pubkey: audioEvent.pubkey, size: 32)
+                NDKUIProfilePicture(ndk: nostrManager.ndk, pubkey: audioEvent.pubkey, size: 32)
             }
             
             if isFromCurrentUser {

@@ -62,7 +62,7 @@ struct TaskStatusUpdateView: View {
             VStack(alignment: .leading, spacing: 4) {
                 // Author and phase
                 HStack(spacing: 4) {
-                    NDKUIDisplayName(pubkey: update.pubkey, fallbackStyle: .custom("Agent"))
+                    NDKUIDisplayName(ndk: nostrManager.ndk, pubkey: update.pubkey, fallbackStyle: .placeholder)
                         .font(.system(size: 12, weight: .medium))
                         .foregroundColor(.primary)
                     
